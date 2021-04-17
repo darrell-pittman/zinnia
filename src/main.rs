@@ -17,6 +17,8 @@ fn main() {
         let hwp = HwParams::any(&pcm)?;
         hwp.set_channels(1)?;
         hwp.set_rate(44100, ValueOr::Nearest)?;
+        hwp.set_buffer_time_near(500000, ValueOr::Nearest)?;
+        hwp.set_period_time_near(100000, ValueOr::Nearest)?;
         hwp.set_format(Format::s16())?;
         hwp.set_access(Access::RWInterleaved)?;
         pcm.hw_params(&hwp)?;
@@ -24,8 +26,8 @@ fn main() {
 
         // Make sure we don't start the stream too early
         let hwp = pcm.hw_params_current()?;
-        let mut st = zinnia::SountTest::<i16>::new();
 
+        let mut st = zinnia::SountTest::<i16>::new();
         let g = st.generate(&hwp);
         println!("{:?}", g);
 

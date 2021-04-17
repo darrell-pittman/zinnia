@@ -2,6 +2,8 @@ use std::marker::PhantomData;
 
 use alsa::{self, pcm};
 
+const MAX_PHASE: f32 = 2.0 * std::f32::consts::PI;
+
 pub trait LossyFrom<T: Sized>: Sized {
     fn lossy_from(_: T) -> Self;
 }
@@ -28,12 +30,14 @@ pub trait Sound {
 }
 
 pub struct SountTest<T> {
+    phase: f32,
     phantom: PhantomData<T>,
 }
 
 impl<T: LossyFrom<f32>> SountTest<T> {
     pub fn new() -> SountTest<T> {
         SountTest::<T> {
+            phase: 0.0,
             phantom: PhantomData::default(),
         }
     }
@@ -44,13 +48,22 @@ impl<T: LossyFrom<f32> + Clone> Sound for SountTest<T> {
 
     fn generate(&mut self, hwp: &pcm::HwParams) -> Vec<Self::Item> {
         let size = hwp.get_period_size().unwrap() as usize;
-        //let mut buf = Vec::<T>::with_capacity(size);
+        let rate = hwp.get_rate().unwrap();
+        let freq = 440.0;
+        let step = MAX_PHASE * freq / rate as f32;
+        let max_val = 8192.0;
+
         let mut buf: Vec<T> = vec![T::lossy_from(0.0); size];
 
-        for (i, a) in buf.iter_mut().enumerate() {
-            let f = (i as f32 * 2.0 * ::std::f32::consts::PI / 128.0).sin()
-                * 8192.0;
-            *a = T::lossy_from(f);
+        for a in buf.iter_mut() {
+            let res = self.phase.sin() * max_val;
+            *a = T::lossy_from(res);
+            self.phase += step;
+            if self.phase >= MAX_PHASE {
+                self.phase -= MAX_PHASE;
+            }
+            // let f = (i as f32 * MAX_PHASE / 128.0).sin() * 8192.0;
+            // *a = T::lossy_from(f);
         }
         buf
     }
