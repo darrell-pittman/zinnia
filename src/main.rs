@@ -1,7 +1,10 @@
 use alsa::pcm::{Access, Format, HwParams, PCM};
 use alsa::{Direction, ValueOr};
 use std::{sync::mpsc, thread};
-use zinnia::Sound;
+use zinnia::{
+    sound::{Sound as _, SountTest},
+    Result,
+};
 
 fn main() {
     let device = "pulse";
@@ -10,7 +13,7 @@ fn main() {
 
     let (tx, rx): (mpsc::Sender<u32>, mpsc::Receiver<u32>) = mpsc::channel();
 
-    let handle = thread::spawn(move || -> alsa::Result<()> {
+    let handle = thread::spawn(move || -> Result<()> {
         let pcm = PCM::new(device, Direction::Playback, false).unwrap();
         // Set hardware parameters: 44100 Hz / Mono / 16 bit
         let hwp = HwParams::any(&pcm)?;
@@ -32,7 +35,7 @@ fn main() {
         let periods_per_second =
             hwp.get_rate()? / hwp.get_period_size()? as u32;
 
-        let mut st = zinnia::SountTest::<i16>::new(110, &hwp);
+        let mut st = SountTest::<i16>::new(110, &hwp);
 
         for received in rx {
             if received == 0 {
