@@ -29,23 +29,25 @@ fn main() {
         swp.set_start_threshold(hwp.get_buffer_size()?)?;
         pcm.sw_params(&swp)?;
 
+        let periods_per_second =
+            hwp.get_rate()? / hwp.get_period_size()? as u32;
+
         let mut st = zinnia::SountTest::<i16>::new(110, &hwp);
+
         for received in rx {
             if received == 0 {
                 break;
             }
+
             st.freq(received);
-            //let buf = st.generate();
-            // Play it back for 2 seconds.
-            for _ in 0..10 {
+
+            for _ in 0..periods_per_second / 2 {
                 match io.writei(&st.generate()[..]) {
                     Ok(_) => (),
                     Err(err) => println!("Error: {}", err),
                 }
             }
         }
-
-        pcm.drain()?;
 
         Ok(())
     });
