@@ -26,44 +26,54 @@ impl_lossy_from!(f32; i16 u16 i32 u32 i64 u64 f32 f64);
 pub trait Sound {
     type Item;
 
-    fn generate(&mut self, hwp: &pcm::HwParams) -> Vec<Self::Item>;
+    fn generate(&mut self) -> Vec<Self::Item>;
 }
 
 pub struct SountTest<T> {
     phase: f32,
+    period_size: alsa::pcm::Frames,
+    freq: u32,
+    rate: u32,
+    amplitude: f32,
     phantom: PhantomData<T>,
 }
 
-impl<T: LossyFrom<f32>> SountTest<T> {
-    pub fn new() -> SountTest<T> {
+impl<T: LossyFrom<f32> + Clone> SountTest<T> {
+    pub fn new(freq: u32, hwp: &pcm::HwParams) -> SountTest<T> {
         SountTest::<T> {
             phase: 0.0,
+            period_size: hwp.get_period_size().unwrap(),
+            freq,
+            rate: hwp.get_rate().unwrap(),
+            amplitude: 8192.0,
             phantom: PhantomData::default(),
         }
+    }
+
+    fn step(&self) -> f32 {
+        MAX_PHASE * self.freq as f32 / self.rate as f32
+    }
+
+    pub fn freq(&mut self, freq: u32) {
+        self.freq = freq;
     }
 }
 
 impl<T: LossyFrom<f32> + Clone> Sound for SountTest<T> {
     type Item = T;
 
-    fn generate(&mut self, hwp: &pcm::HwParams) -> Vec<Self::Item> {
-        let size = hwp.get_period_size().unwrap() as usize;
-        let rate = hwp.get_rate().unwrap();
-        let freq = 440.0;
-        let step = MAX_PHASE * freq / rate as f32;
-        let max_val = 8192.0;
-
-        let mut buf: Vec<T> = vec![T::lossy_from(0.0); size];
+    fn generate(&mut self) -> Vec<Self::Item> {
+        let step = self.step();
+        let mut buf: Vec<T> =
+            vec![T::lossy_from(0.0); self.period_size as usize];
 
         for a in buf.iter_mut() {
-            let res = self.phase.sin() * max_val;
+            let res = self.phase.sin() * self.amplitude;
             *a = T::lossy_from(res);
             self.phase += step;
             if self.phase >= MAX_PHASE {
                 self.phase -= MAX_PHASE;
             }
-            // let f = (i as f32 * MAX_PHASE / 128.0).sin() * 8192.0;
-            // *a = T::lossy_from(f);
         }
         buf
     }

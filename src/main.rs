@@ -8,8 +8,7 @@ fn main() {
 
     //zinnia::sound_test(device).unwrap();
 
-    let (tx, rx): (mpsc::Sender<Vec<i16>>, mpsc::Receiver<Vec<i16>>) =
-        mpsc::channel();
+    let (tx, rx): (mpsc::Sender<u32>, mpsc::Receiver<u32>) = mpsc::channel();
 
     let handle = thread::spawn(move || -> alsa::Result<()> {
         let pcm = PCM::new(device, Direction::Playback, false).unwrap();
@@ -26,22 +25,20 @@ fn main() {
 
         // Make sure we don't start the stream too early
         let hwp = pcm.hw_params_current()?;
-
-        let mut st = zinnia::SountTest::<i16>::new();
-        let g = st.generate(&hwp);
-        println!("{:?}", g);
-
         let swp = pcm.sw_params_current()?;
         swp.set_start_threshold(hwp.get_buffer_size()?)?;
         pcm.sw_params(&swp)?;
 
+        let mut st = zinnia::SountTest::<i16>::new(110, &hwp);
         for received in rx {
-            if received.is_empty() {
+            if received == 0 {
                 break;
             }
+            st.freq(received);
+            //let buf = st.generate();
             // Play it back for 2 seconds.
-            for _ in 0..1 * 44100 / 1024 {
-                match io.writei(&received[..]) {
+            for _ in 0..10 {
+                match io.writei(&st.generate()[..]) {
                     Ok(_) => (),
                     Err(err) => println!("Error: {}", err),
                 }
@@ -53,18 +50,25 @@ fn main() {
         Ok(())
     });
 
-    for t in 1..10 {
-        let mut buf = vec![0i16; 1024];
-        for (i, a) in buf.iter_mut().enumerate() {
-            *a = ((i as f32 * 2.0 * ::std::f32::consts::PI
-                / (256.0 / t as f32))
-                .sin()
-                * 2048.0) as i16
+    let base = 220.0;
+    for _ in 0..1000 {
+        for t in 0..8 {
+            let freq = match t {
+                0 => base,
+                1 => base * 1.125,
+                2 => base * 1.25,
+                3 => base * 1.333,
+                4 => base * 1.5,
+                5 => base * 1.666,
+                6 => base * 1.875,
+                7 => base * 2.0,
+                _ => base,
+            };
+            tx.send(freq as u32).unwrap();
         }
-        tx.send(buf).unwrap();
     }
 
-    tx.send(Vec::new()).unwrap();
+    tx.send(0).unwrap();
 
     handle.join().unwrap().unwrap();
 }
