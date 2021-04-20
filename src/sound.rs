@@ -1,70 +1,128 @@
-use crate::convert::LossyFrom;
-use crate::impl_lossy_from;
-use std::{f32::consts::PI, marker::PhantomData};
+use crate::{convert::LossyFrom, impl_lossy_from, HardwareParams};
+
+use std::{f32::consts::PI, marker::PhantomData, time::Duration};
 
 use alsa::{
     self,
-    pcm::{Access, Format, Frames, HwParams, State},
+    pcm::{Access, Format, HwParams, State},
     Direction, ValueOr, PCM,
 };
+
+type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
 
 impl_lossy_from!(f32; i16 u16 i32 u32 i64 u64 f32 f64);
 
-pub trait Sound {
+fn calc_step(freq: f32, rate: Ticks) -> f32 {
+    MAX_PHASE * freq / rate as f32
+}
+
+fn duration_to_ticks(duration: Duration, rate: Ticks) -> Ticks {
+    (duration.as_secs_f32() * rate as f32) as Ticks
+}
+
+trait Filter {
+    fn apply(&self, val: f32, tick: Ticks) -> f32;
+}
+
+struct LinearFadeIn {
+    duration: Ticks,
+}
+
+impl LinearFadeIn {
+    fn new(duration: Ticks) -> LinearFadeIn {
+        LinearFadeIn { duration }
+    }
+}
+
+impl Filter for LinearFadeIn {
+    fn apply(&self, val: f32, tick: Ticks) -> f32 {
+        if tick > self.duration {
+            val
+        } else {
+            tick as f32 / self.duration as f32 * val
+        }
+    }
+}
+
+struct LinearFadeOut {
+    start: Ticks,
+    end: Ticks,
+}
+
+impl LinearFadeOut {
+    fn new(start: Ticks, end: Ticks) -> LinearFadeOut {
+        LinearFadeOut { start, end }
+    }
+}
+
+impl Filter for LinearFadeOut {
+    fn apply(&self, val: f32, tick: Ticks) -> f32 {
+        if tick < self.start || tick > self.end {
+            val
+        } else {
+            (self.end - tick) as f32 / (self.end - self.start) as f32 * val
+        }
+    }
+}
+pub trait Sound: Send {
     type Item;
 
-    fn generate(&mut self) -> Vec<Self::Item>;
+    fn tick(&mut self) -> Self::Item;
+    fn complete(&self) -> bool;
 }
 
 pub struct SountTest<T> {
+    tick_count: Ticks,
     phase: f32,
-    period_size: Frames,
-    freq: u32,
-    rate: u32,
+    step: f32,
     amplitude: f32,
+    duration: Ticks,
     phantom: PhantomData<T>,
 }
 
-impl<T: LossyFrom<f32> + Clone> SountTest<T> {
-    pub fn new(freq: u32, hwp: &HwParams) -> SountTest<T> {
+impl<T> SountTest<T> {
+    pub fn new(
+        freq: f32,
+        amplitude: f32,
+        duration: Duration,
+        hwp: &HardwareParams,
+    ) -> SountTest<T> {
         SountTest::<T> {
-            phase: 0.0,
-            period_size: hwp.get_period_size().unwrap(),
-            freq,
-            rate: hwp.get_rate().unwrap(),
-            amplitude: 8192.0,
+            duration: duration_to_ticks(duration, hwp.rate),
+            tick_count: 0,
+            phase: 1.0,
+            step: calc_step(freq, hwp.rate),
+            amplitude,
             phantom: PhantomData::default(),
         }
     }
-
-    fn step(&self) -> f32 {
-        MAX_PHASE * self.freq as f32 / self.rate as f32
-    }
-
-    pub fn freq(&mut self, freq: u32) {
-        self.freq = freq;
-    }
 }
 
-impl<T: LossyFrom<f32> + Clone> Sound for SountTest<T> {
+impl<T> Sound for SountTest<T>
+where
+    T: LossyFrom<f32> + Send,
+{
     type Item = T;
 
-    fn generate(&mut self) -> Vec<Self::Item> {
-        let step = self.step();
-        let mut buf: Vec<T> =
-            vec![T::lossy_from(0.0); self.period_size as usize];
-
-        for a in buf.iter_mut() {
-            let res = self.phase.sin() * self.amplitude;
-            *a = T::lossy_from(res);
-            self.phase += step;
-            if self.phase >= MAX_PHASE {
-                self.phase -= MAX_PHASE;
-            }
+    fn tick(&mut self) -> Self::Item {
+        self.tick_count += 1;
+        let mut res = self.phase.sin() * self.amplitude;
+        self.phase += self.step;
+        if self.phase >= MAX_PHASE {
+            self.phase -= MAX_PHASE;
         }
-        buf
+
+        let f = LinearFadeIn::new(20000);
+        res = f.apply(res, self.tick_count);
+        let f = LinearFadeOut::new(self.duration - 20000, self.duration);
+        res = f.apply(res, self.tick_count);
+        LossyFrom::lossy_from(f.apply(res, self.tick_count))
+    }
+
+    fn complete(&self) -> bool {
+        self.tick_count > self.duration
     }
 }
 
