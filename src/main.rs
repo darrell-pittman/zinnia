@@ -74,14 +74,14 @@ fn main() {
                     sounds.push(sound);
                 }
 
-                sounds = sounds.into_iter().filter(|s| !s.complete()).collect();
-
-                if !sounds.is_empty() {
+                if sounds.is_empty() {
+                    vals.push(0);
+                } else {
                     vals.push(
                         sounds.iter_mut().fold(0i16, |acc, s| acc + s.tick()),
                     );
-                } else {
-                    vals.push(0);
+                    sounds =
+                        sounds.into_iter().filter(|s| !s.complete()).collect();
                 }
 
                 if vals.len() == size {
@@ -123,10 +123,10 @@ fn main() {
         };
         let st = SountTest::<i16>::new(freq, 7000.0, duration, &params);
         sound_tx.send(Box::new(st)).unwrap();
-        thread::sleep(duration.mul_f32(1.01));
+        thread::sleep(duration.mul_f32(1.05));
     }
 
-    thread::sleep(Duration::from_secs(5));
+    thread::sleep(duration);
     running.fetch_and(false, std::sync::atomic::Ordering::Relaxed);
     handle.join().unwrap().unwrap();
 }

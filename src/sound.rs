@@ -79,6 +79,8 @@ pub struct SountTest<T> {
     step: f32,
     amplitude: f32,
     duration: Ticks,
+    fade_in: LinearFadeIn,
+    fade_out: LinearFadeOut,
     phantom: PhantomData<T>,
 }
 
@@ -89,12 +91,17 @@ impl<T> SountTest<T> {
         duration: Duration,
         hwp: &HardwareParams,
     ) -> SountTest<T> {
+        let d = duration_to_ticks(duration, hwp.rate);
+        let fade_in_duration = (d as f32 * 0.2) as Ticks;
+
         SountTest::<T> {
-            duration: duration_to_ticks(duration, hwp.rate),
+            duration: d,
             tick_count: 0,
             phase: 1.0,
             step: calc_step(freq, hwp.rate),
             amplitude,
+            fade_in: LinearFadeIn::new(fade_in_duration),
+            fade_out: LinearFadeOut::new(d - fade_in_duration, d),
             phantom: PhantomData::default(),
         }
     }
@@ -114,11 +121,9 @@ where
             self.phase -= MAX_PHASE;
         }
 
-        let f = LinearFadeIn::new(20000);
-        res = f.apply(res, self.tick_count);
-        let f = LinearFadeOut::new(self.duration - 20000, self.duration);
-        res = f.apply(res, self.tick_count);
-        LossyFrom::lossy_from(f.apply(res, self.tick_count))
+        res = self.fade_in.apply(res, self.tick_count);
+        res = self.fade_out.apply(res, self.tick_count);
+        LossyFrom::lossy_from(res)
     }
 
     fn complete(&self) -> bool {
