@@ -42,8 +42,8 @@ fn main() {
             let hwp = HwParams::any(&pcm)?;
             hwp.set_channels(1)?;
             hwp.set_rate(44100, ValueOr::Nearest)?;
-            hwp.set_buffer_time_near(500000, ValueOr::Nearest)?;
-            hwp.set_period_time_near(100000, ValueOr::Nearest)?;
+            hwp.set_buffer_time_near(50000, ValueOr::Nearest)?;
+            hwp.set_period_time_near(10000, ValueOr::Nearest)?;
             hwp.set_format(Format::s16())?;
             hwp.set_access(Access::RWInterleaved)?;
             pcm.hw_params(&hwp)?;
@@ -107,9 +107,9 @@ fn main() {
     let base = 220.0;
     let duration = Duration::from_millis(1000);
 
-    let st = SountTest::<i16>::new(base, 0.0, duration, &params);
-    sound_tx.send(Box::new(st)).unwrap();
-    thread::sleep(duration.mul_f32(1.01));
+    // let st = SountTest::<i16>::new(base, 0.0, duration, &params);
+    // sound_tx.send(Box::new(st)).unwrap();
+    // thread::sleep(duration.mul_f32(1.01));
 
     for i in 0..8 {
         let freq = match i {
@@ -128,7 +128,7 @@ fn main() {
         thread::sleep(duration.mul_f32(1.01));
     }
 
-    thread::sleep(duration);
+    thread::sleep(duration.mul_f32(0.1));
     running.fetch_and(false, std::sync::atomic::Ordering::Relaxed);
     handle.join().unwrap().unwrap();
 }
