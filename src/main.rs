@@ -62,9 +62,6 @@ fn main() {
             swp.set_start_threshold(hwp.get_buffer_size()?)?;
             pcm.sw_params(&swp)?;
 
-            // let periods_per_second =
-            //     hwp.get_rate()? / hwp.get_period_size()? as u32;
-
             let size = hwp.get_period_size()? as usize;
 
             let mut vals = Vec::<i16>::with_capacity(size);
@@ -108,7 +105,12 @@ fn main() {
     println!("Initialized: {:?}", params);
 
     let base = 220.0;
-    let duration = Duration::from_millis(2000);
+    let duration = Duration::from_millis(1000);
+
+    let st = SountTest::<i16>::new(base, 0.0, duration, &params);
+    sound_tx.send(Box::new(st)).unwrap();
+    thread::sleep(duration.mul_f32(1.01));
+
     for i in 0..8 {
         let freq = match i {
             0 => base,
@@ -123,7 +125,7 @@ fn main() {
         };
         let st = SountTest::<i16>::new(freq, 7000.0, duration, &params);
         sound_tx.send(Box::new(st)).unwrap();
-        thread::sleep(duration.mul_f32(1.05));
+        thread::sleep(duration.mul_f32(1.01));
     }
 
     thread::sleep(duration);

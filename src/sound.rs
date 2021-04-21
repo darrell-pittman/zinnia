@@ -66,6 +66,7 @@ impl Filter for LinearFadeOut {
         }
     }
 }
+
 pub trait Sound: Send {
     type Item;
 
@@ -92,7 +93,7 @@ impl<T> SountTest<T> {
         hwp: &HardwareParams,
     ) -> SountTest<T> {
         let d = duration_to_ticks(duration, hwp.rate);
-        let fade_in_duration = (d as f32 * 0.2) as Ticks;
+        let fade_in_duration = (d as f32 * 0.3) as Ticks;
 
         SountTest::<T> {
             duration: d,
@@ -114,15 +115,14 @@ where
     type Item = T;
 
     fn tick(&mut self) -> Self::Item {
-        self.tick_count += 1;
         let mut res = self.phase.sin() * self.amplitude;
         self.phase += self.step;
         if self.phase >= MAX_PHASE {
             self.phase -= MAX_PHASE;
         }
-
         res = self.fade_in.apply(res, self.tick_count);
         res = self.fade_out.apply(res, self.tick_count);
+        self.tick_count += 1;
         LossyFrom::lossy_from(res)
     }
 
