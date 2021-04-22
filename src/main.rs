@@ -11,6 +11,7 @@ use std::{
     time::Duration,
 };
 use zinnia::{
+    convert::LossyFrom,
     error::{Error, Kind},
     sound::{Sound, SountTest},
     HardwareParams, Result,
@@ -18,13 +19,14 @@ use zinnia::{
 
 fn generate<T>(
     running: Arc<AtomicBool>,
-    period_size: usize,
+    hwp: &HardwareParams,
     sound_rx: Receiver<Box<dyn Sound<Item = T>>>,
     period_tx: SyncSender<Vec<T>>,
 ) -> JoinHandle<Result<()>>
 where
     T: Send + 'static + Default + std::ops::Add<Output = T>,
 {
+    let period_size = hwp.period_size as usize;
     thread::spawn(move || -> Result<()> {
         let mut vals = Vec::<T>::with_capacity(period_size);
         let mut sounds = Vec::<Box<dyn Sound<Item = T>>>::new();
@@ -71,7 +73,7 @@ where
         hwp.set_rate(44100, ValueOr::Nearest)?;
         hwp.set_buffer_time_near(50000, ValueOr::Nearest)?;
         hwp.set_period_time_near(10000, ValueOr::Nearest)?;
-        hwp.set_format(Format::s16())?;
+        hwp.set_format(<T as IoFormat>::FORMAT)?;
         hwp.set_access(Access::RWInterleaved)?;
         pcm.hw_params(&hwp)?;
 
@@ -103,16 +105,22 @@ where
     })
 }
 
-fn main() {
-    let device = "pulse";
-    //zinnia::sound_test(device).unwrap();
-
+fn run<T>(device: &'static str)
+where
+    T: Send
+        + 'static
+        + Default
+        + std::ops::Add<Output = T>
+        + IoFormat
+        + Copy
+        + LossyFrom<f32>,
+{
     let init = Arc::new(Barrier::new(2));
     let running = Arc::new(AtomicBool::new(true));
 
     let (sound_tx, sound_rx): (
-        Sender<Box<dyn Sound<Item = i16>>>,
-        Receiver<Box<dyn Sound<Item = i16>>>,
+        Sender<Box<dyn Sound<Item = T>>>,
+        Receiver<Box<dyn Sound<Item = T>>>,
     ) = mpsc::channel();
 
     let (param_tx, param_rx): (
@@ -120,7 +128,7 @@ fn main() {
         Receiver<HardwareParams>,
     ) = mpsc::channel();
 
-    let (period_tx, period_rx): (SyncSender<Vec<i16>>, Receiver<Vec<i16>>) =
+    let (period_tx, period_rx): (SyncSender<Vec<T>>, Receiver<Vec<T>>) =
         mpsc::sync_channel(1);
 
     let mut handles = Vec::new();
@@ -140,12 +148,7 @@ fn main() {
     drop(param_rx);
     println!("Initialized: {:?}", params);
 
-    let handle = generate(
-        Arc::clone(&running),
-        params.period_size as usize,
-        sound_rx,
-        period_tx,
-    );
+    let handle = generate(Arc::clone(&running), &params, sound_rx, period_tx);
 
     handles.push(handle);
 
@@ -168,7 +171,7 @@ fn main() {
             7 => base * 2.0,
             _ => base,
         };
-        let st = SountTest::<i16>::new(freq, 7000.0, duration, &params);
+        let st = SountTest::<T>::new(freq, 7000.0, duration, &params);
         sound_tx.send(Box::new(st)).unwrap();
         thread::sleep(duration.mul_f32(1.01));
     }
@@ -180,6 +183,12 @@ fn main() {
             _ => (),
         }
     }
+}
+
+fn main() {
+    let device = "pulse";
+    //zinnia::sound_test(device).unwrap();
+    run::<i16>(device);
 }
 
 // fn _write_and_poll(
