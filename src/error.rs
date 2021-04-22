@@ -1,11 +1,16 @@
 use alsa::Error as AlsaError;
-use std::{error::Error as StdError, fmt, sync::mpsc::SendError};
+use std::{
+    error::Error as StdError,
+    fmt,
+    sync::mpsc::{RecvError, SendError},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Kind {
     Alsa,
     Zinnia,
-    Send,
+    Channel,
+    Poll,
 }
 
 impl StdError for Kind {}
@@ -15,13 +20,20 @@ impl fmt::Display for Kind {
         match *self {
             Kind::Alsa => write!(f, "Alsa Error"),
             Kind::Zinnia => write!(f, "Zinnia Error"),
-            Kind::Send => write!(f, "Send Error"),
+            Kind::Channel => write!(f, "Channel Error"),
+            Kind::Poll => write!(f, "Poll Error"),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub struct Error(&'static str, Kind);
+
+impl Error {
+    pub fn new(func: &'static str, kind: Kind) -> Error {
+        Error(func, kind)
+    }
+}
 
 impl From<AlsaError> for Error {
     fn from(e: AlsaError) -> Self {
@@ -31,7 +43,13 @@ impl From<AlsaError> for Error {
 
 impl<T> From<SendError<T>> for Error {
     fn from(_: SendError<T>) -> Self {
-        Error("Send Error", Kind::Send)
+        Error("Send Error", Kind::Channel)
+    }
+}
+
+impl From<RecvError> for Error {
+    fn from(_: RecvError) -> Self {
+        Error("Receive Error", Kind::Channel)
     }
 }
 

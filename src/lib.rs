@@ -20,15 +20,6 @@ impl HardwareParams {
     pub fn periods_per_second(&self) -> u32 {
         self.rate / self.period_size as u32
     }
-
-    // pub fn populate(&mut self, hwp: &HwParams) {
-    //     self.channels = hwp.get_channels().unwrap();
-    //     self.rate = hwp.get_rate().unwrap();
-    //     self.buffer_size = hwp.get_buffer_size().unwrap();
-    //     self.period_size = hwp.get_period_size().unwrap();
-    //     self.format = hwp.get_format().unwrap();
-    //     self.access = hwp.get_access().unwrap();
-    // }
 }
 
 impl From<&HwParams<'_>> for HardwareParams {
