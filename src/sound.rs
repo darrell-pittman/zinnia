@@ -2,17 +2,15 @@ use crate::{convert::LossyFrom, impl_lossy_from, HardwareParams};
 
 use std::{f32::consts::PI, marker::PhantomData, mem, time::Duration};
 
-use alsa::{
-    self,
-    pcm::{Access, Format, HwParams, State},
-    Direction, ValueOr, PCM,
-};
-
 pub type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
 
 impl_lossy_from!(f32; i16 u16 i32 u32 i64 u64 f32 f64);
+
+fn verify_scale(scale: f32) -> f32 {
+    scale.abs().min(1.0)
+}
 
 fn calc_step(freq: f32, rate: Ticks) -> f32 {
     MAX_PHASE * freq / rate as f32
@@ -96,10 +94,10 @@ impl LeftRightFade {
         duration: Ticks,
     ) -> LeftRightFade {
         LeftRightFade {
-            min_scale: min_scale.abs().min(1.0),
+            min_scale: verify_scale(min_scale),
             direction,
             duration,
-            range: (max_scale - min_scale).abs().min(1.0),
+            range: verify_scale(max_scale - min_scale),
         }
     }
 }
@@ -157,7 +155,7 @@ impl<T: Default> SountTest<T> {
         let d = duration_to_ticks(duration, hwp.rate);
 
         let amplitude =
-            amplitude_scale.abs().min(1.0) * max_amplitude::<T>() as f32;
+            verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
 
         SountTest::<T> {
             duration: d,
@@ -210,42 +208,4 @@ where
     fn duration(&self) -> Ticks {
         self.duration
     }
-}
-
-pub fn sound_test(device: &str) -> alsa::Result<()> {
-    // Open default playback device
-    let pcm = PCM::new(device, Direction::Playback, false)?;
-
-    // Set hardware parameters: 44100 Hz / Mono / 16 bit
-    let hwp = HwParams::any(&pcm)?;
-    hwp.set_channels(1)?;
-    hwp.set_rate(44100, ValueOr::Nearest)?;
-    hwp.set_format(Format::s16())?;
-    hwp.set_access(Access::RWInterleaved)?;
-    pcm.hw_params(&hwp)?;
-    let io = pcm.io_i16()?;
-
-    // Make sure we don't start the stream too early
-    let hwp = pcm.hw_params_current()?;
-    let swp = pcm.sw_params_current()?;
-    swp.set_start_threshold(hwp.get_buffer_size()?)?;
-    pcm.sw_params(&swp)?;
-
-    // Make a sine wave
-    let mut buf = vec![0i16; 1024];
-    for (i, a) in buf.iter_mut().enumerate() {
-        *a = ((i as f32 * 2.0 * PI / 128.0).sin() * 8192.0) as i16
-    }
-
-    // Play it back for 2 seconds.
-    for _ in 0..20 * 44100 / 1024 {
-        assert_eq!(io.writei(&buf[..])?, 1024);
-    }
-
-    // In case the buffer was larger than 2 seconds, start the stream manually.
-    if pcm.state() != State::Running {
-        pcm.start()?;
-    };
-    // Wait for the stream to finish playback.
-    pcm.drain()
 }

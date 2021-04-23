@@ -160,41 +160,36 @@ where
     let duration_ticks = sound::duration_to_ticks(duration, params.rate());
     let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;
 
-    for _ in 0..100 {
-        for i in 0..8 {
-            let freq = match i {
-                0 => base,
-                1 => base * 1.125,
-                2 => base * 1.25,
-                3 => base * 1.333,
-                4 => base * 1.5,
-                5 => base * 1.666,
-                6 => base * 1.875,
-                7 => base * 2.0,
-                _ => base,
-            };
+    for i in 0..8 {
+        let freq = match i {
+            0 => base,
+            1 => base * 1.125,
+            2 => base * 1.25,
+            3 => base * 1.333,
+            4 => base * 1.5,
+            5 => base * 1.666,
+            6 => base * 1.875,
+            7 => base * 2.0,
+            _ => base,
+        };
 
-            let direction = match i % 2 {
-                0 => FadeDirection::LeftRight,
-                _ => FadeDirection::RightLeft,
-            };
+        let direction = match i % 2 {
+            0 => FadeDirection::LeftRight,
+            _ => FadeDirection::RightLeft,
+        };
 
-            let mut st = SountTest::<T>::new(freq, 0.7, duration, &params);
-            st.add_filter(Box::new(LinearFadeIn::new(fade_ticks)));
-            st.add_filter(Box::new(LinearFadeOut::new(
-                fade_ticks,
-                duration_ticks,
-            )));
-            st.add_filter(Box::new(LeftRightFade::new(
-                0.0,
-                1.0,
-                direction,
-                duration_ticks,
-            )));
+        let mut st = SountTest::<T>::new(freq, 0.7, duration, &params);
+        st.add_filter(Box::new(LinearFadeIn::new(fade_ticks)));
+        st.add_filter(Box::new(LinearFadeOut::new(fade_ticks, duration_ticks)));
+        st.add_filter(Box::new(LeftRightFade::new(
+            0.0,
+            1.0,
+            direction,
+            duration_ticks,
+        )));
 
-            sound_tx.send(Box::new(st))?;
-            thread::sleep(duration.mul_f32(1.01));
-        }
+        sound_tx.send(Box::new(st))?;
+        thread::sleep(duration.mul_f32(1.01));
     }
 
     thread::sleep(duration.mul_f32(0.1));
@@ -209,7 +204,7 @@ where
 fn main() {
     let device = "pulse";
     let params = HardwareParams::new(50000, 10000, 2);
-    //zinnia::sound_test(device).unwrap();
+
     match run::<i16>(device, params) {
         Ok(_) => (),
         Err(err) => println!("{}", err),
