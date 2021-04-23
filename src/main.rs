@@ -31,6 +31,7 @@ where
 {
     let period_size = hwp.period_size() as usize;
     let channels = hwp.channels();
+
     thread::spawn(move || -> Result<()> {
         let size = period_size * channels as usize;
         let mut vals = Vec::<T>::with_capacity(size);
@@ -41,16 +42,13 @@ where
             }
 
             for channel in 0..channels {
-                if sounds.is_empty() {
-                    vals.push(T::default());
-                } else {
-                    vals.push(
-                        sounds.iter_mut().fold(T::default(), |acc, s| {
-                            acc + s.generate(channel)
-                        }),
-                    );
-                }
+                vals.push(
+                    sounds
+                        .iter_mut()
+                        .fold(T::default(), |acc, s| acc + s.generate(channel)),
+                );
             }
+
             sounds.iter_mut().for_each(|s| s.tick());
             sounds = sounds.into_iter().filter(|s| !s.complete()).collect();
 
@@ -192,7 +190,7 @@ where
         thread::sleep(duration.mul_f32(1.01));
     }
 
-    thread::sleep(duration.mul_f32(0.1));
+    thread::sleep(duration.mul_f32(0.5));
     running.fetch_and(false, Ordering::Relaxed);
     for handle in handles {
         handle.join().unwrap()?;
@@ -203,7 +201,7 @@ where
 
 fn main() {
     let device = "pulse";
-    let params = HardwareParams::new(50000, 10000, 2);
+    let params = HardwareParams::new(500000, 100000, 2);
 
     match run::<i16>(device, params) {
         Ok(_) => (),
