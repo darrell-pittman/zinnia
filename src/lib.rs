@@ -9,7 +9,7 @@ pub mod sound;
 
 pub type Result<T> = std::result::Result<T, error::Error>;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct HardwareParams {
     pub channels: u32,
     pub rate: u32,
@@ -17,8 +17,8 @@ pub struct HardwareParams {
     pub period_size: i64,
     pub format: Format,
     pub access: Access,
-    buffer_time: i64,
-    period_time: i64,
+    buffer_time: u32,
+    period_time: u32,
 }
 
 impl HardwareParams {
@@ -26,28 +26,20 @@ impl HardwareParams {
         self.rate / self.period_size as u32
     }
 
-    pub fn new(buffer_time: i64, period_time: i64) -> HardwareParams {
+    pub fn new(buffer_time: u32, period_time: u32) -> HardwareParams {
         let mut hwp = HardwareParams::default();
         hwp.buffer_time = buffer_time;
         hwp.period_time = period_time;
         hwp
     }
 
-    pub fn get_buffer_time(&self) -> i64 {
-        self.buffer_time
-    }
-
-    pub fn get_period_time(&self) -> i64 {
-        self.period_time
-    }
-
     pub fn populate_hwp<T: IoFormat>(&self, hwp: &HwParams) -> Result<()> {
-        hwp.set_channels(1)?;
-        hwp.set_rate(44100, ValueOr::Nearest)?;
-        hwp.set_buffer_time_near(50000, ValueOr::Nearest)?;
-        hwp.set_period_time_near(10000, ValueOr::Nearest)?;
+        hwp.set_channels(self.channels)?;
+        hwp.set_rate(self.rate, ValueOr::Nearest)?;
+        hwp.set_buffer_time_near(self.buffer_time, ValueOr::Nearest)?;
+        hwp.set_period_time_near(self.period_time, ValueOr::Nearest)?;
         hwp.set_format(<T as IoFormat>::FORMAT)?;
-        hwp.set_access(Access::RWInterleaved)?;
+        hwp.set_access(self.access)?;
         Ok(())
     }
 }

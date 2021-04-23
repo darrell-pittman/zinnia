@@ -170,7 +170,7 @@ where
             7 => base * 2.0,
             _ => base,
         };
-        let st = SountTest::<T>::new(freq, 8000.0, duration, &params);
+        let st = SountTest::<T>::new(freq, 0.8, duration, &params);
         sound_tx.send(Box::new(st)).unwrap();
         thread::sleep(duration.mul_f32(1.01));
     }

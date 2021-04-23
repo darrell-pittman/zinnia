@@ -1,6 +1,6 @@
 use crate::{convert::LossyFrom, impl_lossy_from, HardwareParams};
 
-use std::{f32::consts::PI, marker::PhantomData, time::Duration};
+use std::{f32::consts::PI, marker::PhantomData, mem, time::Duration};
 
 use alsa::{
     self,
@@ -20,6 +20,10 @@ fn calc_step(freq: f32, rate: Ticks) -> f32 {
 
 fn duration_to_ticks(duration: Duration, rate: Ticks) -> Ticks {
     (duration.as_secs_f32() * rate as f32) as Ticks
+}
+
+fn max_amplitude<T>() -> usize {
+    (1 << (mem::size_of::<T>() * 8 - 1)) - 1
 }
 
 trait Filter {
@@ -88,12 +92,13 @@ pub struct SountTest<T> {
 impl<T> SountTest<T> {
     pub fn new(
         freq: f32,
-        amplitude: f32,
+        amplitude_scale: f32,
         duration: Duration,
         hwp: &HardwareParams,
     ) -> SountTest<T> {
         let d = duration_to_ticks(duration, hwp.rate);
         let fade_in_duration = (d as f32 * 0.3) as Ticks;
+        let amplitude = amplitude_scale * max_amplitude::<T>() as f32;
 
         SountTest::<T> {
             duration: d,
