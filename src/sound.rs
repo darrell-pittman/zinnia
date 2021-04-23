@@ -8,7 +8,7 @@ use alsa::{
     Direction, ValueOr, PCM,
 };
 
-type Ticks = u32;
+pub type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
 
@@ -18,7 +18,7 @@ fn calc_step(freq: f32, rate: Ticks) -> f32 {
     MAX_PHASE * freq / rate as f32
 }
 
-fn duration_to_ticks(duration: Duration, rate: Ticks) -> Ticks {
+pub fn duration_to_ticks(duration: Duration, rate: Ticks) -> Ticks {
     (duration.as_secs_f32() * rate as f32) as Ticks
 }
 
@@ -26,16 +26,16 @@ fn max_amplitude<T>() -> usize {
     (1 << (mem::size_of::<T>() * 8 - 1)) - 1
 }
 
-trait Filter {
+pub trait Filter: Send {
     fn apply(&self, val: f32, tick: Ticks) -> f32;
 }
 
-struct LinearFadeIn {
+pub struct LinearFadeIn {
     duration: Ticks,
 }
 
 impl LinearFadeIn {
-    fn new(duration: Ticks) -> LinearFadeIn {
+    pub fn new(duration: Ticks) -> LinearFadeIn {
         LinearFadeIn { duration }
     }
 }
@@ -50,14 +50,17 @@ impl Filter for LinearFadeIn {
     }
 }
 
-struct LinearFadeOut {
+pub struct LinearFadeOut {
     start: Ticks,
     end: Ticks,
 }
 
 impl LinearFadeOut {
-    fn new(start: Ticks, end: Ticks) -> LinearFadeOut {
-        LinearFadeOut { start, end }
+    pub fn new(duration: Ticks, end: Ticks) -> LinearFadeOut {
+        LinearFadeOut {
+            start: end - duration,
+            end,
+        }
     }
 }
 
@@ -84,8 +87,7 @@ pub struct SountTest<T> {
     step: f32,
     amplitude: f32,
     duration: Ticks,
-    fade_in: LinearFadeIn,
-    fade_out: LinearFadeOut,
+    filters: Option<Vec<Box<dyn Filter>>>,
     phantom: PhantomData<T>,
 }
 
@@ -97,8 +99,9 @@ impl<T> SountTest<T> {
         hwp: &HardwareParams,
     ) -> SountTest<T> {
         let d = duration_to_ticks(duration, hwp.rate);
-        let fade_in_duration = (d as f32 * 0.3) as Ticks;
-        let amplitude = amplitude_scale * max_amplitude::<T>() as f32;
+
+        let amplitude =
+            amplitude_scale.abs().min(1.0) * max_amplitude::<T>() as f32;
 
         SountTest::<T> {
             duration: d,
@@ -106,9 +109,16 @@ impl<T> SountTest<T> {
             phase: 1.0,
             step: calc_step(freq, hwp.rate),
             amplitude,
-            fade_in: LinearFadeIn::new(fade_in_duration),
-            fade_out: LinearFadeOut::new(d - fade_in_duration, d),
+            filters: None,
             phantom: PhantomData::default(),
+        }
+    }
+
+    pub fn add_filter(&mut self, filter: Box<dyn Filter>) {
+        if let Some(filters) = &mut self.filters {
+            filters.push(filter);
+        } else {
+            self.filters = Some(vec![filter]);
         }
     }
 }
@@ -125,8 +135,11 @@ where
         if self.phase >= MAX_PHASE {
             self.phase -= MAX_PHASE;
         }
-        res = self.fade_in.apply(res, self.tick_count);
-        res = self.fade_out.apply(res, self.tick_count);
+        if let Some(filters) = &self.filters {
+            for filter in filters {
+                res = filter.apply(res, self.tick_count);
+            }
+        }
         self.tick_count += 1;
         LossyFrom::lossy_from(res)
     }

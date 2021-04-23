@@ -11,12 +11,12 @@ pub type Result<T> = std::result::Result<T, error::Error>;
 
 #[derive(Debug)]
 pub struct HardwareParams {
-    pub channels: u32,
-    pub rate: u32,
-    pub buffer_size: i64,
-    pub period_size: i64,
-    pub format: Format,
-    pub access: Access,
+    channels: u32,
+    rate: u32,
+    buffer_size: i64,
+    period_size: i64,
+    format: Format,
+    access: Access,
     buffer_time: u32,
     period_time: u32,
 }
@@ -41,6 +41,12 @@ impl HardwareParams {
         hwp.set_format(<T as IoFormat>::FORMAT)?;
         hwp.set_access(self.access)?;
         Ok(())
+    }
+    pub fn get_period_size(&self) -> i64 {
+        self.period_size
+    }
+    pub fn get_rate(&self) -> u32 {
+        self.rate
     }
 }
 
