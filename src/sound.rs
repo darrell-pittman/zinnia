@@ -1,6 +1,6 @@
 use crate::{convert::LossyFrom, impl_lossy_from, HardwareParams};
 
-use std::{f32::consts::PI, marker::PhantomData, mem, time::Duration};
+use std::{f32::consts::PI, mem, time::Duration};
 
 use alsa::{
     self,
@@ -51,6 +51,7 @@ impl Filter for LinearFadeIn {
 }
 
 pub struct LinearFadeOut {
+    duration: Ticks,
     start: Ticks,
     end: Ticks,
 }
@@ -58,8 +59,9 @@ pub struct LinearFadeOut {
 impl LinearFadeOut {
     pub fn new(duration: Ticks, end: Ticks) -> LinearFadeOut {
         LinearFadeOut {
-            start: end - duration,
+            duration,
             end,
+            start: end - duration,
         }
     }
 }
@@ -69,7 +71,7 @@ impl Filter for LinearFadeOut {
         if tick < self.start || tick > self.end {
             val
         } else {
-            (self.end - tick) as f32 / (self.end - self.start) as f32 * val
+            (self.end - tick) as f32 / self.duration as f32 * val
         }
     }
 }
@@ -77,8 +79,14 @@ impl Filter for LinearFadeOut {
 pub trait Sound: Send {
     type Item;
 
-    fn tick(&mut self) -> Self::Item;
-    fn complete(&self) -> bool;
+    fn generate(&mut self, channel: u32) -> Self::Item;
+    fn tick(&mut self);
+    fn tick_count(&self) -> Ticks;
+    fn duration(&self) -> Ticks;
+
+    fn complete(&self) -> bool {
+        self.tick_count() > self.duration()
+    }
 }
 
 pub struct SountTest<T> {
@@ -88,10 +96,10 @@ pub struct SountTest<T> {
     amplitude: f32,
     duration: Ticks,
     filters: Option<Vec<Box<dyn Filter>>>,
-    phantom: PhantomData<T>,
+    channel_zero_value: T,
 }
 
-impl<T> SountTest<T> {
+impl<T: Default> SountTest<T> {
     pub fn new(
         freq: f32,
         amplitude_scale: f32,
@@ -110,7 +118,7 @@ impl<T> SountTest<T> {
             step: calc_step(freq, hwp.rate),
             amplitude,
             filters: None,
-            phantom: PhantomData::default(),
+            channel_zero_value: Default::default(),
         }
     }
 
@@ -125,27 +133,37 @@ impl<T> SountTest<T> {
 
 impl<T> Sound for SountTest<T>
 where
-    T: LossyFrom<f32> + Send,
+    T: LossyFrom<f32> + Send + Copy,
 {
     type Item = T;
 
-    fn tick(&mut self) -> Self::Item {
-        let mut res = self.phase.sin() * self.amplitude;
-        self.phase += self.step;
-        if self.phase >= MAX_PHASE {
-            self.phase -= MAX_PHASE;
-        }
-        if let Some(filters) = &self.filters {
-            for filter in filters {
-                res = filter.apply(res, self.tick_count);
+    fn generate(&mut self, channel: u32) -> Self::Item {
+        if channel == 0 {
+            let mut res = self.phase.sin() * self.amplitude;
+            self.phase += self.step;
+            if self.phase >= MAX_PHASE {
+                self.phase -= MAX_PHASE;
             }
+            if let Some(filters) = &self.filters {
+                for filter in filters {
+                    res = filter.apply(res, self.tick_count);
+                }
+            }
+            self.channel_zero_value = LossyFrom::lossy_from(res)
         }
-        self.tick_count += 1;
-        LossyFrom::lossy_from(res)
+        self.channel_zero_value
     }
 
-    fn complete(&self) -> bool {
-        self.tick_count > self.duration
+    fn tick(&mut self) {
+        self.tick_count += 1;
+    }
+
+    fn tick_count(&self) -> Ticks {
+        self.tick_count
+    }
+
+    fn duration(&self) -> Ticks {
+        self.duration
     }
 }
 

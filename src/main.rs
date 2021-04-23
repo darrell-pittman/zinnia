@@ -26,27 +26,32 @@ fn generate<T>(
 where
     T: Send + 'static + Default + std::ops::Add<Output = T>,
 {
-    let period_size = hwp.get_period_size() as usize;
+    let period_size = hwp.period_size() as usize;
+    let channels = hwp.channels();
     thread::spawn(move || -> Result<()> {
-        let mut vals = Vec::<T>::with_capacity(period_size);
+        let size = period_size * channels as usize;
+        let mut vals = Vec::<T>::with_capacity(size);
         let mut sounds = Vec::<Box<dyn Sound<Item = T>>>::new();
         while running.load(Ordering::Relaxed) {
             if let Ok(sound) = sound_rx.try_recv() {
                 sounds.push(sound);
             }
 
-            if sounds.is_empty() {
-                vals.push(T::default());
-            } else {
-                vals.push(
-                    sounds
-                        .iter_mut()
-                        .fold(T::default(), |acc, s| acc + s.tick()),
-                );
-                sounds = sounds.into_iter().filter(|s| !s.complete()).collect();
+            for channel in 0..channels {
+                if sounds.is_empty() {
+                    vals.push(T::default());
+                } else {
+                    vals.push(
+                        sounds.iter_mut().fold(T::default(), |acc, s| {
+                            acc + s.generate(channel)
+                        }),
+                    );
+                }
             }
+            sounds.iter_mut().for_each(|s| s.tick());
+            sounds = sounds.into_iter().filter(|s| !s.complete()).collect();
 
-            if vals.len() == period_size {
+            if vals.len() == size {
                 period_tx.send(vals)?;
                 vals = Vec::<T>::with_capacity(period_size);
             }
@@ -128,7 +133,7 @@ where
 
     let mut handles = Vec::new();
 
-    let params = HardwareParams::new(50000, 10000);
+    let params = HardwareParams::new(50000, 10000, 2);
 
     let handle = write_and_loop(
         device,
@@ -152,7 +157,7 @@ where
 
     let base = 220.0;
     let duration = Duration::from_millis(1000);
-    let duration_ticks = sound::duration_to_ticks(duration, params.get_rate());
+    let duration_ticks = sound::duration_to_ticks(duration, params.rate());
     let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;
     println!("Fade Ticks: {}", fade_ticks);
 

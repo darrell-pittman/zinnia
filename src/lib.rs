@@ -26,10 +26,15 @@ impl HardwareParams {
         self.rate / self.period_size as u32
     }
 
-    pub fn new(buffer_time: u32, period_time: u32) -> HardwareParams {
+    pub fn new(
+        buffer_time: u32,
+        period_time: u32,
+        channels: u32,
+    ) -> HardwareParams {
         let mut hwp = HardwareParams::default();
         hwp.buffer_time = buffer_time;
         hwp.period_time = period_time;
+        hwp.channels = channels;
         hwp
     }
 
@@ -42,11 +47,17 @@ impl HardwareParams {
         hwp.set_access(self.access)?;
         Ok(())
     }
-    pub fn get_period_size(&self) -> i64 {
+
+    pub fn period_size(&self) -> i64 {
         self.period_size
     }
-    pub fn get_rate(&self) -> u32 {
+
+    pub fn rate(&self) -> u32 {
         self.rate
+    }
+
+    pub fn channels(&self) -> u32 {
+        self.channels
     }
 }
 
