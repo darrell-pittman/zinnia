@@ -13,7 +13,10 @@ use std::{
 };
 use zinnia::{
     convert::LossyFrom,
-    sound::{self, LinearFadeIn, LinearFadeOut, Sound, SountTest, Ticks},
+    sound::{
+        self, FadeDirection, LeftRightFade, LinearFadeIn, LinearFadeOut, Sound,
+        SountTest, Ticks,
+    },
     HardwareParams, Result,
 };
 
@@ -73,7 +76,6 @@ where
 {
     thread::spawn(move || -> Result<()> {
         let pcm = PCM::new(device, Direction::Playback, false).unwrap();
-        // Set hardware parameters: 44100 Hz / Mono / 16 bit
         let hwp = HwParams::any(&pcm)?;
         params.populate_hwp::<T>(&hwp)?;
         pcm.hw_params(&hwp)?;
@@ -105,7 +107,7 @@ where
     })
 }
 
-fn run<T>(device: &'static str) -> Result<()>
+fn run<T>(device: &'static str, params: HardwareParams) -> Result<()>
 where
     T: Send
         + 'static
@@ -133,8 +135,6 @@ where
 
     let mut handles = Vec::new();
 
-    let params = HardwareParams::new(50000, 10000, 2);
-
     let handle = write_and_loop(
         device,
         params,
@@ -156,29 +156,45 @@ where
     handles.push(handle);
 
     let base = 220.0;
-    let duration = Duration::from_millis(1000);
+    let duration = Duration::from_millis(2000);
     let duration_ticks = sound::duration_to_ticks(duration, params.rate());
     let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;
-    println!("Fade Ticks: {}", fade_ticks);
 
-    for i in 0..8 {
-        let freq = match i {
-            0 => base,
-            1 => base * 1.125,
-            2 => base * 1.25,
-            3 => base * 1.333,
-            4 => base * 1.5,
-            5 => base * 1.666,
-            6 => base * 1.875,
-            7 => base * 2.0,
-            _ => base,
-        };
-        let mut st = SountTest::<T>::new(freq, 0.9, duration, &params);
-        st.add_filter(Box::new(LinearFadeIn::new(fade_ticks)));
-        st.add_filter(Box::new(LinearFadeOut::new(fade_ticks, duration_ticks)));
+    for _ in 0..100 {
+        for i in 0..8 {
+            let freq = match i {
+                0 => base,
+                1 => base * 1.125,
+                2 => base * 1.25,
+                3 => base * 1.333,
+                4 => base * 1.5,
+                5 => base * 1.666,
+                6 => base * 1.875,
+                7 => base * 2.0,
+                _ => base,
+            };
 
-        sound_tx.send(Box::new(st))?;
-        thread::sleep(duration.mul_f32(1.01));
+            let direction = match i % 2 {
+                0 => FadeDirection::LeftRight,
+                _ => FadeDirection::RightLeft,
+            };
+
+            let mut st = SountTest::<T>::new(freq, 0.7, duration, &params);
+            st.add_filter(Box::new(LinearFadeIn::new(fade_ticks)));
+            st.add_filter(Box::new(LinearFadeOut::new(
+                fade_ticks,
+                duration_ticks,
+            )));
+            st.add_filter(Box::new(LeftRightFade::new(
+                0.0,
+                1.0,
+                direction,
+                duration_ticks,
+            )));
+
+            sound_tx.send(Box::new(st))?;
+            thread::sleep(duration.mul_f32(1.01));
+        }
     }
 
     thread::sleep(duration.mul_f32(0.1));
@@ -192,9 +208,10 @@ where
 
 fn main() {
     let device = "pulse";
+    let params = HardwareParams::new(50000, 10000, 2);
     //zinnia::sound_test(device).unwrap();
-    match run::<i16>(device) {
+    match run::<i16>(device, params) {
         Ok(_) => (),
-        Err(err) => println!("Error: {:?}", err),
+        Err(err) => println!("{}", err),
     }
 }

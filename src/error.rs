@@ -33,6 +33,10 @@ impl Error {
     pub fn new(func: &'static str, kind: Kind) -> Error {
         Error(func, kind)
     }
+
+    pub fn kind(&self) -> Kind {
+        self.1
+    }
 }
 
 impl From<AlsaError> for Error {

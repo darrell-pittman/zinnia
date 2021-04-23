@@ -1,6 +1,6 @@
 use crate::{convert::LossyFrom, impl_lossy_from, HardwareParams};
 
-use std::{f32::consts::PI, mem, time::Duration};
+use std::{f32::consts::PI, marker::PhantomData, mem, time::Duration};
 
 use alsa::{
     self,
@@ -27,7 +27,7 @@ fn max_amplitude<T>() -> usize {
 }
 
 pub trait Filter: Send {
-    fn apply(&self, val: f32, tick: Ticks) -> f32;
+    fn apply(&self, val: f32, tick: Ticks, channel: u32) -> f32;
 }
 
 pub struct LinearFadeIn {
@@ -41,7 +41,7 @@ impl LinearFadeIn {
 }
 
 impl Filter for LinearFadeIn {
-    fn apply(&self, val: f32, tick: Ticks) -> f32 {
+    fn apply(&self, val: f32, tick: Ticks, _: u32) -> f32 {
         if tick > self.duration {
             val
         } else {
@@ -67,11 +67,59 @@ impl LinearFadeOut {
 }
 
 impl Filter for LinearFadeOut {
-    fn apply(&self, val: f32, tick: Ticks) -> f32 {
+    fn apply(&self, val: f32, tick: Ticks, _: u32) -> f32 {
         if tick < self.start || tick > self.end {
             val
         } else {
             (self.end - tick) as f32 / self.duration as f32 * val
+        }
+    }
+}
+
+pub enum FadeDirection {
+    LeftRight,
+    RightLeft,
+}
+
+pub struct LeftRightFade {
+    min_scale: f32,
+    direction: FadeDirection,
+    duration: Ticks,
+    range: f32,
+}
+
+impl LeftRightFade {
+    pub fn new(
+        min_scale: f32,
+        max_scale: f32,
+        direction: FadeDirection,
+        duration: Ticks,
+    ) -> LeftRightFade {
+        LeftRightFade {
+            min_scale: min_scale.abs().min(1.0),
+            direction,
+            duration,
+            range: (max_scale - min_scale).abs().min(1.0),
+        }
+    }
+}
+
+impl Filter for LeftRightFade {
+    fn apply(&self, val: f32, tick: Ticks, channel: u32) -> f32 {
+        let percent_complete = tick as f32 / self.duration as f32;
+        let (complete, remaining) = match self.direction {
+            FadeDirection::RightLeft => {
+                (percent_complete, 1.0 - percent_complete)
+            }
+            FadeDirection::LeftRight => {
+                (1.0 - percent_complete, percent_complete)
+            }
+        };
+
+        match channel {
+            0 => val * (self.min_scale as f32 + self.range * complete),
+            1 => val * (self.min_scale as f32 + self.range * remaining),
+            _ => val,
         }
     }
 }
@@ -96,7 +144,7 @@ pub struct SountTest<T> {
     amplitude: f32,
     duration: Ticks,
     filters: Option<Vec<Box<dyn Filter>>>,
-    channel_zero_value: T,
+    phantom: PhantomData<T>,
 }
 
 impl<T: Default> SountTest<T> {
@@ -118,7 +166,7 @@ impl<T: Default> SountTest<T> {
             step: calc_step(freq, hwp.rate),
             amplitude,
             filters: None,
-            channel_zero_value: Default::default(),
+            phantom: PhantomData::default(),
         }
     }
 
@@ -138,23 +186,20 @@ where
     type Item = T;
 
     fn generate(&mut self, channel: u32) -> Self::Item {
-        if channel == 0 {
-            let mut res = self.phase.sin() * self.amplitude;
-            self.phase += self.step;
-            if self.phase >= MAX_PHASE {
-                self.phase -= MAX_PHASE;
-            }
-            if let Some(filters) = &self.filters {
-                for filter in filters {
-                    res = filter.apply(res, self.tick_count);
-                }
-            }
-            self.channel_zero_value = LossyFrom::lossy_from(res)
+        let mut res = self.phase.sin() * self.amplitude;
+        if let Some(filters) = &self.filters {
+            res = filters
+                .iter()
+                .fold(res, |res, f| f.apply(res, self.tick_count, channel));
         }
-        self.channel_zero_value
+        LossyFrom::lossy_from(res)
     }
 
     fn tick(&mut self) {
+        self.phase += self.step;
+        if self.phase >= MAX_PHASE {
+            self.phase -= MAX_PHASE;
+        }
         self.tick_count += 1;
     }
 
