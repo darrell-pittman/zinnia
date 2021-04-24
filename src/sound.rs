@@ -1,4 +1,6 @@
-use crate::{convert::LossyFrom, impl_lossy_from, HardwareParams};
+use alsa::pcm::IoFormat;
+
+use crate::{convert::LossyFrom, hwp::HardwareParams, impl_lossy_from};
 
 use std::{f32::consts::PI, marker::PhantomData, mem, time::Duration};
 
@@ -145,14 +147,14 @@ pub struct SountTest<T> {
     phantom: PhantomData<T>,
 }
 
-impl<T: Default> SountTest<T> {
+impl<T: Default + IoFormat> SountTest<T> {
     pub fn new(
         freq: f32,
         amplitude_scale: f32,
         duration: Duration,
-        hwp: &HardwareParams,
+        hwp: &HardwareParams<T>,
     ) -> SountTest<T> {
-        let d = duration_to_ticks(duration, hwp.rate);
+        let d = duration_to_ticks(duration, hwp.rate());
 
         let amplitude =
             verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
@@ -161,7 +163,7 @@ impl<T: Default> SountTest<T> {
             duration: d,
             tick_count: 0,
             phase: 1.0,
-            step: calc_step(freq, hwp.rate),
+            step: calc_step(freq, hwp.rate()),
             amplitude,
             filters: None,
             phantom: PhantomData::default(),

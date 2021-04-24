@@ -4,6 +4,7 @@ use alsa::{
 };
 use mpsc::{Receiver, Sender, SyncSender};
 use std::{
+    fmt::Debug,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Barrier,
@@ -13,16 +14,17 @@ use std::{
 };
 use zinnia::{
     convert::LossyFrom,
+    hwp::{HardwareParams, HwpBuilder},
     sound::{
         self, FadeDirection, LeftRightFade, LinearFadeIn, LinearFadeOut, Sound,
         SountTest, Ticks,
     },
-    HardwareParams, Result,
+    Result,
 };
 
-fn generate<T>(
+fn generate<T: IoFormat>(
     running: Arc<AtomicBool>,
-    hwp: &HardwareParams,
+    hwp: &HardwareParams<T>,
     sound_rx: Receiver<Box<dyn Sound<Item = T>>>,
     period_tx: SyncSender<Vec<T>>,
 ) -> JoinHandle<Result<()>>
@@ -63,11 +65,11 @@ where
 
 fn write_and_loop<T>(
     device: &'static str,
-    params: HardwareParams,
+    params: HardwareParams<T>,
     init: Arc<Barrier>,
     running: Arc<AtomicBool>,
     period_rx: Receiver<Vec<T>>,
-    param_tx: Sender<HardwareParams>,
+    param_tx: Sender<HardwareParams<T>>,
 ) -> JoinHandle<Result<()>>
 where
     T: Send + 'static + Default + std::ops::Add<Output = T> + IoFormat + Copy,
@@ -75,7 +77,7 @@ where
     thread::spawn(move || -> Result<()> {
         let pcm = PCM::new(device, Direction::Playback, false).unwrap();
         let hwp = HwParams::any(&pcm)?;
-        params.populate_hwp::<T>(&hwp)?;
+        params.populate_hwp(&hwp)?;
         pcm.hw_params(&hwp)?;
         let hwp = pcm.hw_params_current()?;
         param_tx.send(HardwareParams::from(&hwp))?;
@@ -105,7 +107,7 @@ where
     })
 }
 
-fn run<T>(device: &'static str, params: HardwareParams) -> Result<()>
+fn run<T>(device: &'static str, params: HardwareParams<T>) -> Result<()>
 where
     T: Send
         + 'static
@@ -113,7 +115,8 @@ where
         + std::ops::Add<Output = T>
         + IoFormat
         + Copy
-        + LossyFrom<f32>,
+        + LossyFrom<f32>
+        + Debug,
 {
     let init = Arc::new(Barrier::new(2));
     let running = Arc::new(AtomicBool::new(true));
@@ -124,8 +127,8 @@ where
     ) = mpsc::channel();
 
     let (param_tx, param_rx): (
-        Sender<HardwareParams>,
-        Receiver<HardwareParams>,
+        Sender<HardwareParams<T>>,
+        Receiver<HardwareParams<T>>,
     ) = mpsc::channel();
 
     let (period_tx, period_rx): (SyncSender<Vec<T>>, Receiver<Vec<T>>) =
@@ -201,9 +204,9 @@ where
 
 fn main() {
     let device = "pulse";
-    let params = HardwareParams::new(500000, 100000, 2);
+    let params = HwpBuilder::<i16>::new(50000, 10000, 2).build();
 
-    match run::<i16>(device, params) {
+    match run(device, params) {
         Ok(_) => (),
         Err(err) => println!("{}", err),
     }
