@@ -64,7 +64,10 @@ impl<T: IoFormat> From<&HwParams<'_>> for HardwareParams<T> {
     }
 }
 
-pub struct HwpBuilder<T: IoFormat> {
+pub struct HwpBuilder<T>
+where
+    T: IoFormat + Copy,
+{
     channels: u32,
     rate: u32,
     format: Format,
@@ -74,7 +77,10 @@ pub struct HwpBuilder<T: IoFormat> {
     phantom: PhantomData<T>,
 }
 
-impl<T: IoFormat> HwpBuilder<T> {
+impl<T> HwpBuilder<T>
+where
+    T: IoFormat + Copy,
+{
     pub fn new(buffer_time: u32, period_time: u32, channels: u32) -> Self {
         HwpBuilder::<T> {
             channels,
@@ -86,12 +92,12 @@ impl<T: IoFormat> HwpBuilder<T> {
             phantom: PhantomData::<T>::default(),
         }
     }
-    pub fn rate<'a>(&'a mut self, rate: u32) -> &'a mut Self {
+    pub fn rate(mut self, rate: u32) -> Self {
         self.rate = rate;
         self
     }
 
-    pub fn access<'a>(&'a mut self, access: Access) -> &'a mut Self {
+    pub fn access(mut self, access: Access) -> Self {
         self.access = access;
         self
     }
