@@ -215,7 +215,7 @@ where
 
 fn main() {
     let device = "pulse";
-    let params = HwpBuilder::<i32>::new(50000, 10000, 2).rate(44100).build();
+    let params = HwpBuilder::<i16>::new(50000, 10000, 2).rate(44100).build();
 
     match run(device, params) {
         Ok(_) => (),
