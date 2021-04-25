@@ -156,15 +156,31 @@ where
 
     handles.push(handle);
 
-    let base = 220.0;
-    let duration = Duration::from_millis(2000);
+    let mut base = 110.0;
+    let duration = Duration::from_millis(1000);
     let duration_ticks = sound::duration_to_ticks(duration, params.rate());
     let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;
 
-    let (outer, inner) = (1, 8);
+    let (octaves, notes) = (2, 7);
 
-    for _ in 0..outer {
-        for i in 0..inner {
+    let write_note = |freq: f32, fade_direction: FadeDirection| -> Result<()> {
+        println!("Frequency: {}", freq);
+        let mut st = SountTest::<T>::new(freq, 0.7, duration, &params);
+        st.add_filter(Box::new(LinearFadeIn::new(fade_ticks)));
+        st.add_filter(Box::new(LinearFadeOut::new(fade_ticks, duration_ticks)));
+        st.add_filter(Box::new(LeftRightFade::new(
+            0.0,
+            1.0,
+            fade_direction,
+            duration_ticks,
+        )));
+
+        sound_tx.send(Box::new(st))?;
+        Ok(())
+    };
+
+    for _ in 0..octaves {
+        for i in 0..notes {
             let freq = match i {
                 0 => base,
                 1 => base * 1.125,
@@ -173,7 +189,6 @@ where
                 4 => base * 1.5,
                 5 => base * 1.666,
                 6 => base * 1.875,
-                7 => base * 2.0,
                 _ => base,
             };
 
@@ -182,25 +197,14 @@ where
                 _ => FadeDirection::RightLeft,
             };
 
-            let mut st = SountTest::<T>::new(freq, 0.7, duration, &params);
-            st.add_filter(Box::new(LinearFadeIn::new(fade_ticks)));
-            st.add_filter(Box::new(LinearFadeOut::new(
-                fade_ticks,
-                duration_ticks,
-            )));
-            st.add_filter(Box::new(LeftRightFade::new(
-                0.0,
-                1.0,
-                direction,
-                duration_ticks,
-            )));
-
-            sound_tx.send(Box::new(st))?;
+            write_note(freq, direction)?;
             thread::sleep(duration.mul_f32(1.01));
         }
+        base *= 2.0;
     }
+    write_note(base, FadeDirection::LeftRight)?;
+    thread::sleep(duration.mul_f32(1.51));
 
-    thread::sleep(duration.mul_f32(0.5));
     running.fetch_and(false, Ordering::Relaxed);
     for handle in handles {
         handle.join().unwrap()?;
@@ -211,7 +215,7 @@ where
 
 fn main() {
     let device = "pulse";
-    let params = HwpBuilder::<i16>::new(50000, 10000, 2).rate(44100).build();
+    let params = HwpBuilder::<i32>::new(50000, 10000, 2).rate(44100).build();
 
     match run(device, params) {
         Ok(_) => (),
