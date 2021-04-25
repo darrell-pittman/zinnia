@@ -156,12 +156,9 @@ where
 
     handles.push(handle);
 
-    let mut base = 110.0;
     let duration = Duration::from_millis(1000);
     let duration_ticks = sound::duration_to_ticks(duration, params.rate());
     let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;
-
-    let (octaves, notes) = (2, 7);
 
     let write_note = |freq: f32, fade_direction: FadeDirection| -> Result<()> {
         println!("Frequency: {}", freq);
@@ -178,6 +175,9 @@ where
         sound_tx.send(Box::new(st))?;
         Ok(())
     };
+
+    let mut base = 110.0;
+    let (octaves, notes) = (2, 7);
 
     for _ in 0..octaves {
         for i in 0..notes {
@@ -203,7 +203,7 @@ where
         base *= 2.0;
     }
     write_note(base, FadeDirection::LeftRight)?;
-    thread::sleep(duration.mul_f32(1.51));
+    thread::sleep(duration.mul_f32(1.01));
 
     running.fetch_and(false, Ordering::Relaxed);
     for handle in handles {
