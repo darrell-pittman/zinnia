@@ -1,17 +1,15 @@
 use alsa::pcm::IoFormat;
 
-use crate::{convert::LossyFrom, hwp::HardwareParams, impl_lossy_from};
+use crate::hwp::HardwareParams;
 
-use std::{f32::consts::PI, marker::PhantomData, mem, time::Duration};
+use std::{f32::consts::PI, mem, time::Duration};
 
 pub type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
 
-impl_lossy_from!(f32; i16 u16 i32 u32 i64 u64 f32 f64);
-
 fn verify_scale(scale: f32) -> f32 {
-    scale.abs().min(1.0)
+    scale.abs().clamp(0.0, 1.0)
 }
 
 fn calc_step(freq: f32, rate: Ticks) -> f32 {
@@ -132,9 +130,7 @@ impl Filter for LeftRightFade {
 }
 
 pub trait Sound: Send {
-    type Item;
-
-    fn generate(&mut self, channel: u32) -> Self::Item;
+    fn generate(&mut self, channel: u32) -> f32;
     fn tick(&mut self);
     fn tick_count(&self) -> Ticks;
     fn duration(&self) -> Ticks;
@@ -144,36 +140,37 @@ pub trait Sound: Send {
     }
 }
 
-pub struct SountTest<T> {
+pub struct SountTest {
     tick_count: Ticks,
     phase: f32,
     step: f32,
     amplitude: f32,
     duration: Ticks,
     filters: Option<Vec<Box<dyn Filter>>>,
-    phantom: PhantomData<T>,
 }
 
-impl<T: Default + IoFormat> SountTest<T> {
-    pub fn new(
+impl SountTest {
+    pub fn new<T>(
         freq: f32,
         amplitude_scale: f32,
         duration: Duration,
         hwp: &HardwareParams<T>,
-    ) -> SountTest<T> {
+    ) -> SountTest
+    where
+        T: IoFormat,
+    {
         let d = duration_to_ticks(duration, hwp.rate());
 
         let amplitude =
             verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
 
-        SountTest::<T> {
+        SountTest {
             duration: d,
             tick_count: 0,
             phase: 1.0,
             step: calc_step(freq, hwp.rate()),
             amplitude,
             filters: None,
-            phantom: PhantomData::default(),
         }
     }
 
@@ -186,20 +183,15 @@ impl<T: Default + IoFormat> SountTest<T> {
     }
 }
 
-impl<T> Sound for SountTest<T>
-where
-    T: LossyFrom<f32> + Send + Copy,
-{
-    type Item = T;
-
-    fn generate(&mut self, channel: u32) -> Self::Item {
+impl Sound for SountTest {
+    fn generate(&mut self, channel: u32) -> f32 {
         let mut res = self.phase.sin() * self.amplitude;
         if let Some(filters) = &self.filters {
             res = filters
                 .iter()
                 .fold(res, |res, f| f.apply(res, self.tick_count, channel));
         }
-        LossyFrom::lossy_from(res)
+        res
     }
 
     fn tick(&mut self) {

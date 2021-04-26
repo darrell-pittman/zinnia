@@ -22,14 +22,14 @@ use zinnia::{
     Result,
 };
 
-fn generate<T: IoFormat>(
+fn generate<T>(
     running: Arc<AtomicBool>,
     hwp: &HardwareParams<T>,
-    sound_rx: Receiver<Box<dyn Sound<Item = T>>>,
+    sound_rx: Receiver<Box<dyn Sound>>,
     period_tx: SyncSender<Vec<T>>,
 ) -> JoinHandle<Result<()>>
 where
-    T: Send + 'static + Default + std::ops::Add<Output = T>,
+    T: Send + 'static + IoFormat + LossyFrom<f32>,
 {
     let period_size = hwp.period_size() as usize;
     let channels = hwp.channels();
@@ -37,18 +37,18 @@ where
     thread::spawn(move || -> Result<()> {
         let size = period_size * channels as usize;
         let mut vals = Vec::<T>::with_capacity(size);
-        let mut sounds = Vec::<Box<dyn Sound<Item = T>>>::new();
+        let mut sounds = Vec::<Box<dyn Sound>>::new();
         while running.load(Ordering::Relaxed) {
             if let Ok(sound) = sound_rx.try_recv() {
                 sounds.push(sound);
             }
 
             for channel in 0..channels {
-                vals.push(
+                vals.push(LossyFrom::lossy_from(
                     sounds
                         .iter_mut()
-                        .fold(T::default(), |acc, s| acc + s.generate(channel)),
-                );
+                        .fold(0.0f32, |acc, s| acc + s.generate(channel)),
+                ));
             }
 
             sounds.iter_mut().for_each(|s| s.tick());
@@ -72,7 +72,7 @@ fn write_and_loop<T>(
     param_tx: Sender<HardwareParams<T>>,
 ) -> JoinHandle<Result<()>>
 where
-    T: Send + 'static + Default + std::ops::Add<Output = T> + IoFormat + Copy,
+    T: Send + 'static + IoFormat + Copy,
 {
     thread::spawn(move || -> Result<()> {
         let pcm = PCM::new(device, Direction::Playback, false).unwrap();
@@ -109,21 +109,14 @@ where
 
 fn run<T>(device: &'static str, params: HardwareParams<T>) -> Result<()>
 where
-    T: Send
-        + 'static
-        + Default
-        + std::ops::Add<Output = T>
-        + IoFormat
-        + Copy
-        + LossyFrom<f32>
-        + Debug,
+    T: Send + 'static + IoFormat + Copy + LossyFrom<f32> + Debug,
 {
     let init = Arc::new(Barrier::new(2));
     let running = Arc::new(AtomicBool::new(true));
 
     let (sound_tx, sound_rx): (
-        Sender<Box<dyn Sound<Item = T>>>,
-        Receiver<Box<dyn Sound<Item = T>>>,
+        Sender<Box<dyn Sound>>,
+        Receiver<Box<dyn Sound>>,
     ) = mpsc::channel();
 
     let (param_tx, param_rx): (
@@ -162,7 +155,7 @@ where
 
     let write_note = |freq: f32, fade_direction: FadeDirection| -> Result<()> {
         println!("Frequency: {}", freq);
-        let mut st = SountTest::<T>::new(freq, 0.7, duration, &params);
+        let mut st = SountTest::new(freq, 0.5, duration, &params);
         st.add_filter(Box::new(LinearFadeIn::new(fade_ticks)));
         st.add_filter(Box::new(LinearFadeOut::new(fade_ticks, duration_ticks)));
         st.add_filter(Box::new(LeftRightFade::new(
@@ -176,7 +169,7 @@ where
         Ok(())
     };
 
-    let mut base = 110.0;
+    let mut base = 220.0;
     let (octaves, notes) = (2, 7);
 
     for _ in 0..octaves {
@@ -215,7 +208,7 @@ where
 
 fn main() {
     let device = "pulse";
-    let params = HwpBuilder::<i16>::new(50000, 10000, 2).rate(44100).build();
+    let params = HwpBuilder::<i16>::new(25000, 5000, 2).rate(44100).build();
 
     match run(device, params) {
         Ok(_) => (),
