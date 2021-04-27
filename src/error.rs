@@ -2,6 +2,7 @@ use alsa::Error as AlsaError;
 use std::{
     error::Error as StdError,
     fmt,
+    io::Error as IoError,
     sync::mpsc::{RecvError, SendError},
 };
 
@@ -11,6 +12,7 @@ pub enum Kind {
     Zinnia,
     Channel,
     Poll,
+    IO,
 }
 
 impl StdError for Kind {}
@@ -22,6 +24,7 @@ impl fmt::Display for Kind {
             Kind::Zinnia => write!(f, "Zinnia Error"),
             Kind::Channel => write!(f, "Channel Error"),
             Kind::Poll => write!(f, "Poll Error"),
+            Kind::IO => write!(f, "IO Error"),
         }
     }
 }
@@ -54,6 +57,12 @@ impl<T> From<SendError<T>> for Error {
 impl From<RecvError> for Error {
     fn from(_: RecvError) -> Self {
         Error("Receive Error", Kind::Channel)
+    }
+}
+
+impl From<IoError> for Error {
+    fn from(_: IoError) -> Self {
+        Error("Io Error", Kind::IO)
     }
 }
 

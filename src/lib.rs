@@ -1,6 +1,7 @@
 pub mod convert;
 pub mod error;
 pub mod hwp;
+pub mod music;
 pub mod sound;
 
 use crate::convert::LossyFrom;

@@ -5,6 +5,7 @@ use alsa::{
 use mpsc::{Receiver, Sender, SyncSender};
 use std::{
     fmt::Debug,
+    io,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Barrier,
@@ -15,10 +16,8 @@ use std::{
 use zinnia::{
     convert::LossyFrom,
     hwp::{HardwareParams, HwpBuilder},
-    sound::{
-        self, FadeDirection, LeftRightFade, LinearFadeIn, LinearFadeOut, Sound,
-        SountTest, Ticks,
-    },
+    music::Note,
+    sound::{self, LinearFadeIn, LinearFadeOut, Sound, SountTest, Ticks},
     Result,
 };
 
@@ -47,7 +46,7 @@ where
                 vals.push(LossyFrom::lossy_from(
                     sounds
                         .iter_mut()
-                        .fold(0.0f32, |acc, s| acc + s.generate(channel)),
+                        .fold(0.0f32, |acc, s| acc + s.generate(channel) / 2.0),
                 ));
             }
 
@@ -107,6 +106,54 @@ where
     })
 }
 
+fn input<T>(
+    running: Arc<AtomicBool>,
+    sound_tx: Sender<Box<dyn Sound>>,
+    params: HardwareParams<T>,
+) -> JoinHandle<Result<()>>
+where
+    T: Send + 'static + IoFormat + Copy + LossyFrom<f32> + Debug,
+{
+    thread::spawn(move || {
+        let base_freq = 220.0;
+        let duration = Duration::from_millis(1000);
+        let amplitude_scale = 0.7;
+        let phase = 1.0;
+        let duration_ticks = sound::duration_to_ticks(duration, params.rate());
+        let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;
+        while running.load(Ordering::Relaxed) {
+            let mut note = String::new();
+            io::stdin().read_line(&mut note)?;
+            match Note::parse(note.as_str()) {
+                Ok(note) => {
+                    let freq = note.freq(base_freq);
+                    let mut sound = Box::new(SountTest::new(
+                        freq,
+                        phase,
+                        amplitude_scale,
+                        duration,
+                        &params,
+                    ));
+
+                    sound.add_filter(Box::new(LinearFadeIn::new(fade_ticks)));
+
+                    sound.add_filter(Box::new(LinearFadeOut::new(
+                        fade_ticks,
+                        duration_ticks,
+                    )));
+
+                    sound_tx.send(sound)?;
+                }
+                Err(_) => {
+                    println!("Done!");
+                    running.fetch_and(false, Ordering::Relaxed);
+                }
+            }
+        }
+        Ok(())
+    })
+}
+
 fn run<T>(device: &'static str, params: HardwareParams<T>) -> Result<()>
 where
     T: Send + 'static + IoFormat + Copy + LossyFrom<f32> + Debug,
@@ -149,56 +196,9 @@ where
 
     handles.push(handle);
 
-    let duration = Duration::from_millis(1000);
-    let duration_ticks = sound::duration_to_ticks(duration, params.rate());
-    let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;
+    let handle = input(Arc::clone(&running), sound_tx, params);
+    handles.push(handle);
 
-    let write_note = |freq: f32, fade_direction: FadeDirection| -> Result<()> {
-        println!("Frequency: {}", freq);
-        let mut st = SountTest::new(freq, 0.5, duration, &params);
-        st.add_filter(Box::new(LinearFadeIn::new(fade_ticks)));
-        st.add_filter(Box::new(LinearFadeOut::new(fade_ticks, duration_ticks)));
-        st.add_filter(Box::new(LeftRightFade::new(
-            0.0,
-            1.0,
-            fade_direction,
-            duration_ticks,
-        )));
-
-        sound_tx.send(Box::new(st))?;
-        Ok(())
-    };
-
-    let mut base = 220.0;
-    let (octaves, notes) = (2, 7);
-
-    for _ in 0..octaves {
-        for i in 0..notes {
-            let freq = match i {
-                0 => base,
-                1 => base * 1.125,
-                2 => base * 1.25,
-                3 => base * 1.333,
-                4 => base * 1.5,
-                5 => base * 1.666,
-                6 => base * 1.875,
-                _ => base,
-            };
-
-            let direction = match i % 2 {
-                0 => FadeDirection::LeftRight,
-                _ => FadeDirection::RightLeft,
-            };
-
-            write_note(freq, direction)?;
-            thread::sleep(duration.mul_f32(1.01));
-        }
-        base *= 2.0;
-    }
-    write_note(base, FadeDirection::LeftRight)?;
-    thread::sleep(duration.mul_f32(1.01));
-
-    running.fetch_and(false, Ordering::Relaxed);
     for handle in handles {
         handle.join().unwrap()?;
     }

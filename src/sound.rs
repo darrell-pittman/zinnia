@@ -152,6 +152,7 @@ pub struct SountTest {
 impl SountTest {
     pub fn new<T>(
         freq: f32,
+        phase: f32,
         amplitude_scale: f32,
         duration: Duration,
         hwp: &HardwareParams<T>,
@@ -167,7 +168,7 @@ impl SountTest {
         SountTest {
             duration: d,
             tick_count: 0,
-            phase: 1.0,
+            phase: verify_scale(phase),
             step: calc_step(freq, hwp.rate()),
             amplitude,
             filters: None,
