@@ -78,7 +78,7 @@ impl Filter for LinearFadeOut {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum FadeDirection {
     LeftRight,
     RightLeft,
