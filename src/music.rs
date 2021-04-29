@@ -4,7 +4,8 @@ use super::error::{Error, Kind};
 use super::Result;
 use std::result::Result as StdResult;
 
-const KEYS_PER_OCTAVE: u32 = 12;
+const KEYS_PER_OCTAVE: i32 = 12;
+const START_KEY_OFFSET: i32 = 8;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Octave {
@@ -111,7 +112,8 @@ impl Note {
         };
 
         let key: i32 =
-            (*octave as u32 * KEYS_PER_OCTAVE + key_offset) as i32 - 8;
+            *octave as i32 * KEYS_PER_OCTAVE + key_offset - START_KEY_OFFSET;
+
         if key < 1 || key > 88 {
             Err(Error::new("Invalid Note", Kind::Zinnia))
         } else {

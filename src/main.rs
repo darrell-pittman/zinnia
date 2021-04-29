@@ -43,7 +43,7 @@ where
             }
 
             for channel in 0..channels {
-                vals.push(LossyFrom::lossy_from(sound::mix(
+                vals.push(LossyFrom::lossy_from(sound::mix_fixed(
                     &mut sounds,
                     channel,
                 )));

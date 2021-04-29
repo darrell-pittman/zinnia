@@ -7,12 +7,25 @@ use std::{f32::consts::PI, mem, time::Duration};
 pub type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
-const MAX_CONCURRENT: f32 = 4.0;
+const MAX_CONCURRENT: u32 = 4;
+
+pub fn mix_fixed(sounds: &mut Vec<Box<dyn Sound>>, channel: u32) -> f32 {
+    mix_internal(sounds, channel, MAX_CONCURRENT)
+}
 
 pub fn mix(sounds: &mut Vec<Box<dyn Sound>>, channel: u32) -> f32 {
-    sounds
-        .iter_mut()
-        .fold(0.0f32, |acc, s| acc + s.generate(channel) / MAX_CONCURRENT)
+    let size = sounds.len() as u32;
+    mix_internal(sounds, channel, size)
+}
+
+fn mix_internal(
+    sounds: &mut Vec<Box<dyn Sound>>,
+    channel: u32,
+    num_sounds: u32,
+) -> f32 {
+    sounds.iter_mut().fold(0.0f32, |acc, s| {
+        acc + s.generate(channel) / num_sounds as f32
+    })
 }
 
 fn verify_scale(scale: f32) -> f32 {
