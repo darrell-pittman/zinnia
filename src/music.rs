@@ -36,20 +36,6 @@ impl TryFrom<char> for Octave {
             _ => Err(Error::new("Invalid Octave", Kind::Zinnia)),
         }
     }
-    // fn from(i: char) -> Self {
-    //     match i {
-    //         '0' => Octave::Zero,
-    //         '1' => Octave::One,
-    //         '2' => Octave::Two,
-    //         '3' => Octave::Three,
-    //         '4' => Octave::Four,
-    //         '5' => Octave::Five,
-    //         '6' => Octave::Six,
-    //         '7' => Octave::Seven,
-    //         '8' => Octave::Eight,
-    //         _ => unreachable!(),
-    //     }
-    // }
 }
 
 #[derive(Debug)]
