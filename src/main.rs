@@ -17,7 +17,7 @@ use zinnia::{
     convert::LossyFrom,
     hwp::{HardwareParams, HwpBuilder},
     music::Note,
-    sound::{self, LinearFadeIn, LinearFadeOut, Sound, SountTest, Ticks},
+    sound::{self, LinearFadeIn, LinearFadeOut, Sinusoid, Sound, Ticks},
     Result,
 };
 
@@ -43,11 +43,10 @@ where
             }
 
             for channel in 0..channels {
-                vals.push(LossyFrom::lossy_from(
-                    sounds
-                        .iter_mut()
-                        .fold(0.0f32, |acc, s| acc + s.generate(channel) / 2.0),
-                ));
+                vals.push(LossyFrom::lossy_from(sound::mix(
+                    &mut sounds,
+                    channel,
+                )));
             }
 
             sounds.iter_mut().for_each(|s| s.tick());
@@ -115,38 +114,48 @@ where
     T: Send + 'static + IoFormat + Copy + LossyFrom<f32> + Debug,
 {
     thread::spawn(move || {
-        let base_freq = 220.0;
         let duration = Duration::from_millis(1000);
-        let amplitude_scale = 1.0;
+        let amplitude_scale = 7.0;
         let phase = 1.0;
         let duration_ticks = sound::duration_to_ticks(duration, params.rate());
         let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;
         while running.load(Ordering::Relaxed) {
             let mut note = String::new();
             io::stdin().read_line(&mut note)?;
+            if note.trim().is_empty() {
+                println!("Done!");
+                running.fetch_and(false, Ordering::Relaxed);
+                break;
+            }
+
             match Note::parse(note.as_str()) {
                 Ok(note) => {
-                    let freq = note.freq(base_freq);
-                    let mut sound = Box::new(SountTest::new(
-                        freq,
-                        phase,
-                        amplitude_scale,
-                        duration,
-                        &params,
-                    ));
+                    if let Ok(freq) = note.freq() {
+                        println!("Freq: {}", freq);
+                        let mut sound = Box::new(Sinusoid::new(
+                            freq,
+                            phase,
+                            amplitude_scale,
+                            duration,
+                            &params,
+                        ));
 
-                    sound.add_filter(Box::new(LinearFadeIn::new(fade_ticks)));
+                        sound.add_filter(Box::new(LinearFadeIn::new(
+                            fade_ticks,
+                        )));
 
-                    sound.add_filter(Box::new(LinearFadeOut::new(
-                        fade_ticks,
-                        duration_ticks,
-                    )));
+                        sound.add_filter(Box::new(LinearFadeOut::new(
+                            fade_ticks,
+                            duration_ticks,
+                        )));
 
-                    sound_tx.send(sound)?;
+                        sound_tx.send(sound)?;
+                    } else {
+                        println!("Invalid Note!");
+                    }
                 }
                 Err(_) => {
-                    println!("Done!");
-                    running.fetch_and(false, Ordering::Relaxed);
+                    println!("Failed to parse note!");
                 }
             }
         }

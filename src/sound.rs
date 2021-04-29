@@ -7,6 +7,13 @@ use std::{f32::consts::PI, mem, time::Duration};
 pub type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
+const MAX_CONCURRENT: f32 = 4.0;
+
+pub fn mix(sounds: &mut Vec<Box<dyn Sound>>, channel: u32) -> f32 {
+    sounds
+        .iter_mut()
+        .fold(0.0f32, |acc, s| acc + s.generate(channel) / MAX_CONCURRENT)
+}
 
 fn verify_scale(scale: f32) -> f32 {
     scale.abs().clamp(0.0, 1.0)
@@ -140,7 +147,7 @@ pub trait Sound: Send {
     }
 }
 
-pub struct SountTest {
+pub struct Sinusoid {
     tick_count: Ticks,
     phase: f32,
     step: f32,
@@ -149,14 +156,14 @@ pub struct SountTest {
     filters: Option<Vec<Box<dyn Filter>>>,
 }
 
-impl SountTest {
+impl Sinusoid {
     pub fn new<T>(
         freq: f32,
         phase: f32,
         amplitude_scale: f32,
         duration: Duration,
         hwp: &HardwareParams<T>,
-    ) -> SountTest
+    ) -> Sinusoid
     where
         T: IoFormat,
     {
@@ -165,7 +172,7 @@ impl SountTest {
         let amplitude =
             verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
 
-        SountTest {
+        Sinusoid {
             duration: d,
             tick_count: 0,
             phase: verify_scale(phase),
@@ -184,7 +191,7 @@ impl SountTest {
     }
 }
 
-impl Sound for SountTest {
+impl Sound for Sinusoid {
     fn generate(&mut self, channel: u32) -> f32 {
         let mut res = self.phase.sin() * self.amplitude;
         if let Some(filters) = &self.filters {
@@ -209,5 +216,57 @@ impl Sound for SountTest {
 
     fn duration(&self) -> Ticks {
         self.duration
+    }
+}
+
+pub struct MultiSound {
+    sounds: Vec<Box<dyn Sound>>,
+}
+
+impl MultiSound {
+    pub fn new(sound: Box<dyn Sound>) -> MultiSound {
+        MultiSound {
+            sounds: vec![sound],
+        }
+    }
+
+    pub fn with_sounds(sounds: &mut Vec<Box<dyn Sound>>) -> MultiSound {
+        let mut result = MultiSound {
+            sounds: Vec::with_capacity(sounds.len()),
+        };
+        result.add_sounds(sounds);
+        result
+    }
+
+    pub fn add_sound(&mut self, sound: Box<dyn Sound>) {
+        self.sounds.push(sound);
+    }
+
+    pub fn add_sounds(&mut self, sounds: &mut Vec<Box<dyn Sound>>) {
+        self.sounds.append(sounds);
+    }
+}
+
+impl Sound for MultiSound {
+    fn generate(&mut self, channel: u32) -> f32 {
+        mix(&mut self.sounds, channel)
+    }
+
+    fn tick(&mut self) {
+        for sound in &mut self.sounds {
+            sound.tick();
+        }
+    }
+
+    fn tick_count(&self) -> Ticks {
+        unimplemented!();
+    }
+
+    fn duration(&self) -> Ticks {
+        unimplemented!();
+    }
+
+    fn complete(&self) -> bool {
+        self.sounds.iter().all(|s| s.complete())
     }
 }
