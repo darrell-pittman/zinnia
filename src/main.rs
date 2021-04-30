@@ -50,7 +50,7 @@ where
             }
 
             sounds.iter_mut().for_each(|s| s.tick());
-            sounds = sounds.into_iter().filter(|s| !s.complete()).collect();
+            sounds = sounds.into_iter().filter(|s| !s.is_complete()).collect();
 
             if vals.len() == size {
                 period_tx.send(vals)?;

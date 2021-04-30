@@ -44,6 +44,28 @@ fn max_amplitude<T>() -> usize {
     (1 << (mem::size_of::<T>() * 8 - 1)) - 1
 }
 
+struct Ticker {
+    tick_count: Ticks,
+    duration: Ticks,
+}
+
+impl Ticker {
+    fn new(duration: Ticks) -> Ticker {
+        Ticker {
+            tick_count: 0,
+            duration,
+        }
+    }
+
+    fn is_complete(&self) -> bool {
+        self.tick_count >= self.duration
+    }
+
+    fn tick(&mut self) {
+        self.tick_count += 1;
+    }
+}
+
 pub trait Filter: Send {
     fn apply(&self, val: f32, tick: Ticks, channel: u32) -> f32;
 }
@@ -152,21 +174,15 @@ impl Filter for LeftRightFade {
 pub trait Sound: Send {
     fn generate(&mut self, channel: u32) -> f32;
     fn tick(&mut self);
-    fn tick_count(&self) -> Ticks;
-    fn duration(&self) -> Ticks;
-
-    fn complete(&self) -> bool {
-        self.tick_count() > self.duration()
-    }
+    fn is_complete(&self) -> bool;
 }
 
 pub struct Sinusoid {
-    tick_count: Ticks,
     phase: f32,
     step: f32,
     amplitude: f32,
-    duration: Ticks,
     filters: Option<Vec<Box<dyn Filter>>>,
+    ticker: Ticker,
 }
 
 impl Sinusoid {
@@ -186,12 +202,11 @@ impl Sinusoid {
             verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
 
         Sinusoid {
-            duration: d,
-            tick_count: 0,
             phase: verify_scale(phase),
             step: calc_step(freq, hwp.rate()),
             amplitude,
             filters: None,
+            ticker: Ticker::new(d),
         }
     }
 
@@ -208,9 +223,9 @@ impl Sound for Sinusoid {
     fn generate(&mut self, channel: u32) -> f32 {
         let mut res = self.phase.sin() * self.amplitude;
         if let Some(filters) = &self.filters {
-            res = filters
-                .iter()
-                .fold(res, |res, f| f.apply(res, self.tick_count, channel));
+            res = filters.iter().fold(res, |res, f| {
+                f.apply(res, self.ticker.tick_count, channel)
+            });
         }
         res
     }
@@ -220,15 +235,11 @@ impl Sound for Sinusoid {
         if self.phase >= MAX_PHASE {
             self.phase -= MAX_PHASE;
         }
-        self.tick_count += 1;
+        self.ticker.tick();
     }
 
-    fn tick_count(&self) -> Ticks {
-        self.tick_count
-    }
-
-    fn duration(&self) -> Ticks {
-        self.duration
+    fn is_complete(&self) -> bool {
+        self.ticker.is_complete()
     }
 }
 
@@ -271,15 +282,7 @@ impl Sound for MultiSound {
         }
     }
 
-    fn tick_count(&self) -> Ticks {
-        unimplemented!();
-    }
-
-    fn duration(&self) -> Ticks {
-        unimplemented!();
-    }
-
-    fn complete(&self) -> bool {
-        self.sounds.iter().all(|s| s.complete())
+    fn is_complete(&self) -> bool {
+        self.sounds.iter().all(|s| s.is_complete())
     }
 }
