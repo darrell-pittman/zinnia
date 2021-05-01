@@ -12,7 +12,7 @@ pub type Ticks = u32;
 const MAX_PHASE: f32 = 2.0 * PI;
 const MAX_CONCURRENT: u32 = 4;
 const INDEX_PRECISION: u64 = 1000;
-const PERIOD_SAMPLE_SIZE: usize = 2000;
+const PERIOD_SAMPLE_SIZE: usize = 8000;
 
 lazy_static! {
     pub static ref SINE_PERIOD: Vec<f32> = sine_period(PERIOD_SAMPLE_SIZE);
