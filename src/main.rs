@@ -17,7 +17,11 @@ use zinnia::{
     convert::LossyFrom,
     hwp::{HardwareParams, HwpBuilder},
     music::Note,
-    sound::{self, LinearFadeIn, LinearFadeOut, Sinusoid, Sound, Ticks},
+    sound::{
+        self,
+        filter::{LinearFadeIn, LinearFadeOut},
+        Sinusoid, Sound, Ticks,
+    },
     Result,
 };
 
