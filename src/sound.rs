@@ -11,7 +11,7 @@ pub type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
 const MAX_CONCURRENT: u32 = 4;
-const FREQ_PRECISION: u32 = 100;
+const FREQ_PRECISION: u32 = 10;
 const PERIOD_SAMPLE_SIZE: usize = 2000;
 
 lazy_static! {
@@ -210,6 +210,7 @@ impl<'a> CachedPeriod<'a> {
 
         let phase_ticks =
             (phase / MAX_PHASE * params.rate() as f32 / freq) as Ticks;
+
         let amplitude =
             verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
 
@@ -228,7 +229,7 @@ impl<'a> CachedPeriod<'a> {
     }
 }
 
-impl<'a> Sound for CachedPeriod<'a> {
+impl Sound for CachedPeriod<'_> {
     fn generate(&mut self, channel: u32) -> f32 {
         let idx = (self.idx_scale
             * (self.ticker.tick_count + self.phase_ticks)
