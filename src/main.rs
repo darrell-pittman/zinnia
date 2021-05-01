@@ -20,7 +20,7 @@ use zinnia::{
     sound::{
         self,
         filter::{LinearFadeIn, LinearFadeOut},
-        Sinusoid, Sound, Ticks,
+        CachedPeriod, Sinusoid, Sound, Ticks, SINE_PERIOD,
     },
     Result,
 };
@@ -135,7 +135,6 @@ where
             match Note::parse(note.as_str()) {
                 Ok(note) => {
                     if let Ok(freq) = note.freq() {
-                        println!("Freq: {}", freq);
                         let mut sound = Box::new(Sinusoid::new(
                             freq,
                             phase,
@@ -154,6 +153,28 @@ where
                         )));
 
                         sound_tx.send(sound)?;
+                        thread::sleep(duration.mul_f32(1.1));
+
+                        let mut sound = Box::new(CachedPeriod::new(
+                            &SINE_PERIOD[..],
+                            freq,
+                            phase,
+                            amplitude_scale,
+                            duration,
+                            &params,
+                        ));
+
+                        sound.add_filter(Box::new(LinearFadeIn::new(
+                            fade_ticks,
+                        )));
+
+                        sound.add_filter(Box::new(LinearFadeOut::new(
+                            fade_ticks,
+                            duration_ticks,
+                        )));
+
+                        sound_tx.send(sound)?;
+                        thread::sleep(duration.mul_f32(1.1));
                     } else {
                         println!("Invalid Note!");
                     }
