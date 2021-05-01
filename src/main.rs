@@ -99,10 +99,7 @@ where
             let vals = period_rx.recv()?;
             match io.writei(&vals[..]) {
                 Ok(_) => (),
-                Err(err) => {
-                    println!("Error: {}", err);
-                    pcm.try_recover(err, true)?
-                }
+                Err(err) => pcm.try_recover(err, true)?,
             }
         }
         Ok(())

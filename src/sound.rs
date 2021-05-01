@@ -11,7 +11,7 @@ pub type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
 const MAX_CONCURRENT: u32 = 4;
-const FREQ_PRECISION: u32 = 10;
+const INDEX_PRECISION: u64 = 1000;
 const PERIOD_SAMPLE_SIZE: usize = 2000;
 
 lazy_static! {
@@ -185,7 +185,7 @@ impl Sound for MultiSound {
 pub struct CachedPeriod<'a> {
     data: &'a [f32],
     amplitude: f32,
-    idx_scale: u32,
+    indices_per_tick: u32,
     phase_ticks: Ticks,
     filters: FilterCollection,
     ticker: Ticker,
@@ -204,9 +204,9 @@ impl<'a> CachedPeriod<'a> {
         T: IoFormat,
     {
         let d = duration_to_ticks(duration, params.rate());
-        let idx_scale = (freq * FREQ_PRECISION as f32) as u32
-            * data.len() as u32
-            / params.rate();
+        let ticks_per_cycle = params.rate() as f32 / freq;
+        let indices_per_tick = (data.len() as f32 / ticks_per_cycle
+            * INDEX_PRECISION as f32) as u32;
 
         let phase_ticks =
             (phase / MAX_PHASE * params.rate() as f32 / freq) as Ticks;
@@ -217,7 +217,7 @@ impl<'a> CachedPeriod<'a> {
         CachedPeriod {
             data,
             amplitude,
-            idx_scale,
+            indices_per_tick,
             phase_ticks,
             filters: FilterCollection::new(),
             ticker: Ticker::new(d),
@@ -231,10 +231,10 @@ impl<'a> CachedPeriod<'a> {
 
 impl Sound for CachedPeriod<'_> {
     fn generate(&mut self, channel: u32) -> f32 {
-        let idx = (self.idx_scale
-            * (self.ticker.tick_count + self.phase_ticks)
-            / FREQ_PRECISION)
-            % self.data.len() as u32;
+        let idx: u64 = (self.indices_per_tick as u64
+            * (self.ticker.tick_count + self.phase_ticks) as u64
+            / INDEX_PRECISION)
+            % self.data.len() as u64;
 
         let val = self.data[idx as usize] * self.amplitude;
         self.filters.apply(val, self.ticker.tick_count, channel)
