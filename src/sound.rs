@@ -11,7 +11,7 @@ pub type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
 const MAX_CONCURRENT: u32 = 4;
-const INDEX_PRECISION: u64 = 1000;
+const INDEX_PRECISION: usize = 1000;
 const PERIOD_SAMPLE_SIZE: usize = 8000;
 
 lazy_static! {
@@ -185,8 +185,9 @@ impl Sound for MultiSound {
 pub struct CachedPeriod<'a> {
     data: &'a [f32],
     amplitude: f32,
-    indices_per_tick: u32,
-    phase_ticks: Ticks,
+    idx: usize,
+    idx_step: usize,
+    idx_limit: usize,
     filters: FilterCollection,
     ticker: Ticker,
 }
@@ -205,11 +206,11 @@ impl<'a> CachedPeriod<'a> {
     {
         let d = duration_to_ticks(duration, params.rate());
         let ticks_per_cycle = params.rate() as f32 / freq;
-        let indices_per_tick = (data.len() as f32 / ticks_per_cycle
-            * INDEX_PRECISION as f32) as u32;
 
-        let phase_ticks =
-            (phase / MAX_PHASE * params.rate() as f32 / freq) as Ticks;
+        let idx_step = ((data.len() as f32 / ticks_per_cycle)
+            * INDEX_PRECISION as f32) as usize;
+
+        let idx = (phase / MAX_PHASE * data.len() as f32) as usize;
 
         let amplitude =
             verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
@@ -217,8 +218,9 @@ impl<'a> CachedPeriod<'a> {
         CachedPeriod {
             data,
             amplitude,
-            indices_per_tick,
-            phase_ticks,
+            idx,
+            idx_step,
+            idx_limit: data.len() * INDEX_PRECISION,
             filters: FilterCollection::new(),
             ticker: Ticker::new(d),
         }
@@ -231,16 +233,16 @@ impl<'a> CachedPeriod<'a> {
 
 impl Sound for CachedPeriod<'_> {
     fn generate(&mut self, channel: u32) -> f32 {
-        let idx: u64 = (self.indices_per_tick as u64
-            * (self.ticker.tick_count + self.phase_ticks) as u64
-            / INDEX_PRECISION)
-            % self.data.len() as u64;
-
-        let val = self.data[idx as usize] * self.amplitude;
+        let idx = self.idx / INDEX_PRECISION;
+        let val = self.data[idx] * self.amplitude;
         self.filters.apply(val, self.ticker.tick_count, channel)
     }
 
     fn tick(&mut self) {
+        self.idx += self.idx_step;
+        if self.idx >= self.idx_limit {
+            self.idx -= self.idx_limit;
+        }
         self.ticker.tick();
     }
 
