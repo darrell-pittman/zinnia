@@ -82,7 +82,7 @@ pub trait Sound: Send {
 }
 
 pub struct Sinusoid {
-    phase: f32,
+    phase: Vec<f32>,
     step: f32,
     amplitude: f32,
     filters: FilterCollection,
@@ -92,7 +92,7 @@ pub struct Sinusoid {
 impl Sinusoid {
     pub fn new<T>(
         freq: f32,
-        phase: f32,
+        phase: Vec<f32>,
         amplitude_scale: f32,
         duration: Duration,
         hwp: &HardwareParams<T>,
@@ -106,7 +106,7 @@ impl Sinusoid {
             verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
 
         Sinusoid {
-            phase: verify_scale(phase),
+            phase: phase.iter().map(|p| verify_scale(*p)).collect(),
             step: calc_step(freq, hwp.rate()),
             amplitude,
             filters: FilterCollection::new(),
@@ -121,15 +121,12 @@ impl Sinusoid {
 
 impl Sound for Sinusoid {
     fn generate(&mut self, channel: u32) -> f32 {
-        let res = self.phase.sin() * self.amplitude;
+        let res = self.phase[channel as usize].sin() * self.amplitude;
+        self.phase[channel as usize] += self.step;
         self.filters.apply(res, self.ticker.tick_count, channel)
     }
 
     fn tick(&mut self) {
-        self.phase += self.step;
-        if self.phase >= MAX_PHASE {
-            self.phase -= MAX_PHASE;
-        }
         self.ticker.tick();
     }
 
@@ -185,7 +182,7 @@ impl Sound for MultiSound {
 pub struct CachedPeriod<'a> {
     data: &'a [f32],
     amplitude: f32,
-    idx: usize,
+    idx: Vec<usize>,
     idx_step: usize,
     idx_limit: usize,
     filters: FilterCollection,
@@ -196,7 +193,7 @@ impl<'a> CachedPeriod<'a> {
     pub fn new<'b, T>(
         data: &'a [f32],
         freq: f32,
-        phase: f32,
+        phase: Vec<f32>,
         amplitude_scale: f32,
         duration: Duration,
         params: &'b HardwareParams<T>,
@@ -210,7 +207,11 @@ impl<'a> CachedPeriod<'a> {
         let idx_step = ((data.len() as f32 / ticks_per_cycle)
             * INDEX_PRECISION as f32) as usize;
 
-        let idx = (phase / MAX_PHASE * data.len() as f32) as usize;
+        let idx: Vec<usize> = phase
+            .iter()
+            .map(|p| (p / MAX_PHASE * data.len() as f32) as usize)
+            .collect();
+        //(phase / MAX_PHASE * data.len() as f32) as usize;
 
         let amplitude =
             verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
@@ -233,16 +234,17 @@ impl<'a> CachedPeriod<'a> {
 
 impl Sound for CachedPeriod<'_> {
     fn generate(&mut self, channel: u32) -> f32 {
-        let idx = self.idx / INDEX_PRECISION;
+        let ch = channel as usize;
+        let idx = self.idx[ch] / INDEX_PRECISION;
+        self.idx[ch] += self.idx_step;
+        if self.idx[ch] >= self.idx_limit {
+            self.idx[ch] -= self.idx_limit;
+        }
         let val = self.data[idx] * self.amplitude;
         self.filters.apply(val, self.ticker.tick_count, channel)
     }
 
     fn tick(&mut self) {
-        self.idx += self.idx_step;
-        if self.idx >= self.idx_limit {
-            self.idx -= self.idx_limit;
-        }
         self.ticker.tick();
     }
 

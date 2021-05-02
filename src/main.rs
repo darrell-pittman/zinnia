@@ -134,7 +134,7 @@ where
                     if let Ok(freq) = note.freq() {
                         let mut sound = Box::new(Sinusoid::new(
                             freq,
-                            phase,
+                            vec![phase, phase],
                             amplitude_scale,
                             duration,
                             &params,
@@ -155,7 +155,7 @@ where
                         let mut sound = Box::new(CachedPeriod::new(
                             &SINE_PERIOD[..],
                             freq,
-                            phase,
+                            vec![phase, phase],
                             amplitude_scale,
                             duration,
                             &params,
