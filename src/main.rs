@@ -19,9 +19,9 @@ use zinnia::{
     music::Note,
     sound::{
         self,
+        config::SoundConfigCollection,
         filter::{LinearFadeIn, LinearFadeOut},
-        CachedPeriod, Sinusoid, Sound, SoundConfigCollection, Ticks,
-        SINE_PERIOD,
+        CachedPeriod, Sinusoid, Sound, Ticks, SINE_PERIOD,
     },
     Result,
 };

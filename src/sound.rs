@@ -1,11 +1,13 @@
+pub mod config;
 pub mod filter;
 
 use crate::hwp::HardwareParams;
 use alsa::pcm::IoFormat;
+use config::SoundConfigCollection;
 use core::f32;
 use filter::{Filter, FilterCollection};
 use lazy_static::lazy_static;
-use std::{f32::consts::PI, mem, slice::Iter, time::Duration, usize};
+use std::{f32::consts::PI, mem, time::Duration, usize};
 
 pub type Ticks = u32;
 
@@ -81,81 +83,6 @@ pub trait Sound: Send {
     fn is_complete(&self) -> bool;
 }
 
-pub struct SoundConfig {
-    freq: f32,
-    phase: f32,
-    amplitude_scale: f32,
-}
-
-impl SoundConfig {
-    pub fn new(freq: f32, phase: f32, amplitude_scale: f32) -> Self {
-        SoundConfig {
-            freq,
-            phase,
-            amplitude_scale,
-        }
-    }
-}
-
-pub struct SoundConfigCollection {
-    configs: Option<Vec<SoundConfig>>,
-}
-
-impl SoundConfigCollection {
-    pub fn new() -> Self {
-        SoundConfigCollection { configs: None }
-    }
-
-    pub fn with_configs(configs: &[(f32, f32, f32)]) -> Self {
-        let configs: Vec<SoundConfig> = configs
-            .iter()
-            .map(|c| SoundConfig::new(c.0, c.1, c.2))
-            .collect();
-
-        Self {
-            configs: Some(configs),
-        }
-    }
-
-    pub fn add_config(&mut self, freq: f32, phase: f32, amplitude_scale: f32) {
-        let config = SoundConfig::new(freq, phase, amplitude_scale);
-        match self.configs {
-            Some(ref mut configs) => configs.push(config),
-            None => self.configs = Some(vec![config]),
-        }
-    }
-}
-
-impl<'a> IntoIterator for &'a SoundConfigCollection {
-    type Item = &'a SoundConfig;
-
-    type IntoIter = SoundConfigIterator<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        SoundConfigIterator {
-            iterator: match self.configs {
-                Some(ref configs) => Some(configs.iter()),
-                None => None,
-            },
-        }
-    }
-}
-
-pub struct SoundConfigIterator<'a> {
-    iterator: Option<Iter<'a, SoundConfig>>,
-}
-
-impl<'a> Iterator for SoundConfigIterator<'a> {
-    type Item = &'a SoundConfig;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.iterator {
-            Some(ref mut iter) => iter.next(),
-            None => None,
-        }
-    }
-}
-
 pub struct Sinusoid {
     phase: Vec<f32>,
     step: Vec<f32>,
@@ -176,16 +103,18 @@ impl Sinusoid {
         let d = duration_to_ticks(duration, hwp.rate());
 
         Sinusoid {
-            phase: config.into_iter().map(|c| verify_scale(c.phase)).collect(),
+            phase: config
+                .iter()
+                .map_phase(|phase| verify_scale(phase))
+                .collect(),
             step: config
-                .into_iter()
-                .map(|c| calc_step(c.freq, hwp.rate()))
+                .iter()
+                .map_freq(|freq| calc_step(freq, hwp.rate()))
                 .collect(),
             amplitude: config
-                .into_iter()
-                .map(|c| {
-                    verify_scale(c.amplitude_scale)
-                        * max_amplitude::<T>() as f32
+                .iter()
+                .map_amplitude(|amp| {
+                    verify_scale(amp) * max_amplitude::<T>() as f32
                 })
                 .collect(),
             filters: FilterCollection::new(),
@@ -282,9 +211,9 @@ impl<'a> CachedPeriod<'a> {
         let d = duration_to_ticks(duration, params.rate());
 
         let idx_step: Vec<usize> = config
-            .into_iter()
-            .map(|c| {
-                let ticks_per_cycle = params.rate() as f32 / c.freq;
+            .iter()
+            .map_freq(|freq| {
+                let ticks_per_cycle = params.rate() as f32 / freq;
 
                 ((data.len() as f32 / ticks_per_cycle) * INDEX_PRECISION as f32)
                     as usize
@@ -292,14 +221,14 @@ impl<'a> CachedPeriod<'a> {
             .collect();
 
         let idx: Vec<usize> = config
-            .into_iter()
-            .map(|c| (c.phase / MAX_PHASE * data.len() as f32) as usize)
+            .iter()
+            .map_phase(|phase| (phase / MAX_PHASE * data.len() as f32) as usize)
             .collect();
 
         let amplitude: Vec<f32> = config
-            .into_iter()
-            .map(|c| {
-                verify_scale(c.amplitude_scale) * max_amplitude::<T>() as f32
+            .iter()
+            .map_amplitude(|amp| {
+                verify_scale(amp) * max_amplitude::<T>() as f32
             })
             .collect();
 
