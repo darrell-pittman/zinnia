@@ -69,25 +69,25 @@ pub struct SoundConfigIterator<'a> {
 }
 
 impl<'a> SoundConfigIterator<'a> {
-    pub fn map_freq<F, T>(self, f: F) -> Box<dyn Iterator<Item = T> + 'a>
+    pub fn map_freq<F, T>(self, f: F) -> impl Iterator<Item = T> + 'a
     where
         F: Fn(f32) -> T + 'a,
     {
-        Box::new(self.iterator.unwrap().map(move |c| (f)(c.freq)))
+        self.iterator.unwrap().map(move |c| (f)(c.freq))
     }
 
-    pub fn map_phase<F, T>(self, f: F) -> Box<dyn Iterator<Item = T> + 'a>
+    pub fn map_phase<F, T>(self, f: F) -> impl Iterator<Item = T> + 'a
     where
         F: Fn(f32) -> T + 'a,
     {
-        Box::new(self.iterator.unwrap().map(move |c| (f)(c.phase)))
+        self.iterator.unwrap().map(move |c| (f)(c.phase))
     }
 
-    pub fn map_amplitude<F, T>(self, f: F) -> Box<dyn Iterator<Item = T> + 'a>
+    pub fn map_amplitude<F, T>(self, f: F) -> impl Iterator<Item = T> + 'a
     where
         F: Fn(f32) -> T + 'a,
     {
-        Box::new(self.iterator.unwrap().map(move |c| (f)(c.amplitude_scale)))
+        self.iterator.unwrap().map(move |c| (f)(c.amplitude_scale))
     }
 }
 
