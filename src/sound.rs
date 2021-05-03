@@ -5,7 +5,7 @@ use alsa::pcm::IoFormat;
 use core::f32;
 use filter::{Filter, FilterCollection};
 use lazy_static::lazy_static;
-use std::{f32::consts::PI, mem, time::Duration, usize};
+use std::{f32::consts::PI, mem, slice::Iter, time::Duration, usize};
 
 pub type Ticks = u32;
 
@@ -81,19 +81,92 @@ pub trait Sound: Send {
     fn is_complete(&self) -> bool;
 }
 
+pub struct SoundConfig {
+    freq: f32,
+    phase: f32,
+    amplitude_scale: f32,
+}
+
+impl SoundConfig {
+    pub fn new(freq: f32, phase: f32, amplitude_scale: f32) -> Self {
+        SoundConfig {
+            freq,
+            phase,
+            amplitude_scale,
+        }
+    }
+}
+
+pub struct SoundConfigCollection {
+    configs: Option<Vec<SoundConfig>>,
+}
+
+impl SoundConfigCollection {
+    pub fn new() -> Self {
+        SoundConfigCollection { configs: None }
+    }
+
+    pub fn with_configs(configs: &[(f32, f32, f32)]) -> Self {
+        let configs: Vec<SoundConfig> = configs
+            .iter()
+            .map(|c| SoundConfig::new(c.0, c.1, c.2))
+            .collect();
+
+        Self {
+            configs: Some(configs),
+        }
+    }
+
+    pub fn add_config(&mut self, freq: f32, phase: f32, amplitude_scale: f32) {
+        let config = SoundConfig::new(freq, phase, amplitude_scale);
+        match self.configs {
+            Some(ref mut configs) => configs.push(config),
+            None => self.configs = Some(vec![config]),
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a SoundConfigCollection {
+    type Item = &'a SoundConfig;
+
+    type IntoIter = SoundConfigIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SoundConfigIterator {
+            iterator: match self.configs {
+                Some(ref configs) => Some(configs.iter()),
+                None => None,
+            },
+        }
+    }
+}
+
+pub struct SoundConfigIterator<'a> {
+    iterator: Option<Iter<'a, SoundConfig>>,
+}
+
+impl<'a> Iterator for SoundConfigIterator<'a> {
+    type Item = &'a SoundConfig;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.iterator {
+            Some(ref mut iter) => iter.next(),
+            None => None,
+        }
+    }
+}
+
 pub struct Sinusoid {
     phase: Vec<f32>,
-    step: f32,
-    amplitude: f32,
+    step: Vec<f32>,
+    amplitude: Vec<f32>,
     filters: FilterCollection,
     ticker: Ticker,
 }
 
 impl Sinusoid {
     pub fn new<T>(
-        freq: f32,
-        phase: Vec<f32>,
-        amplitude_scale: f32,
+        config: &SoundConfigCollection,
         duration: Duration,
         hwp: &HardwareParams<T>,
     ) -> Sinusoid
@@ -102,13 +175,19 @@ impl Sinusoid {
     {
         let d = duration_to_ticks(duration, hwp.rate());
 
-        let amplitude =
-            verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
-
         Sinusoid {
-            phase: phase.iter().map(|p| verify_scale(*p)).collect(),
-            step: calc_step(freq, hwp.rate()),
-            amplitude,
+            phase: config.into_iter().map(|c| verify_scale(c.phase)).collect(),
+            step: config
+                .into_iter()
+                .map(|c| calc_step(c.freq, hwp.rate()))
+                .collect(),
+            amplitude: config
+                .into_iter()
+                .map(|c| {
+                    verify_scale(c.amplitude_scale)
+                        * max_amplitude::<T>() as f32
+                })
+                .collect(),
             filters: FilterCollection::new(),
             ticker: Ticker::new(d),
         }
@@ -121,8 +200,9 @@ impl Sinusoid {
 
 impl Sound for Sinusoid {
     fn generate(&mut self, channel: u32) -> f32 {
-        let res = self.phase[channel as usize].sin() * self.amplitude;
-        self.phase[channel as usize] += self.step;
+        let ch = channel as usize;
+        let res = self.phase[ch].sin() * self.amplitude[ch];
+        self.phase[ch] += self.step[ch];
         self.filters.apply(res, self.ticker.tick_count, channel)
     }
 
@@ -181,40 +261,47 @@ impl Sound for MultiSound {
 
 pub struct CachedPeriod<'a> {
     data: &'a [f32],
-    amplitude: f32,
+    amplitude: Vec<f32>,
     idx: Vec<usize>,
-    idx_step: usize,
+    idx_step: Vec<usize>,
     idx_limit: usize,
     filters: FilterCollection,
     ticker: Ticker,
 }
 
 impl<'a> CachedPeriod<'a> {
-    pub fn new<'b, T>(
+    pub fn new<T>(
         data: &'a [f32],
-        freq: f32,
-        phase: Vec<f32>,
-        amplitude_scale: f32,
+        config: &SoundConfigCollection,
         duration: Duration,
-        params: &'b HardwareParams<T>,
+        params: &HardwareParams<T>,
     ) -> Self
     where
         T: IoFormat,
     {
         let d = duration_to_ticks(duration, params.rate());
-        let ticks_per_cycle = params.rate() as f32 / freq;
 
-        let idx_step = ((data.len() as f32 / ticks_per_cycle)
-            * INDEX_PRECISION as f32) as usize;
+        let idx_step: Vec<usize> = config
+            .into_iter()
+            .map(|c| {
+                let ticks_per_cycle = params.rate() as f32 / c.freq;
 
-        let idx: Vec<usize> = phase
-            .iter()
-            .map(|p| (p / MAX_PHASE * data.len() as f32) as usize)
+                ((data.len() as f32 / ticks_per_cycle) * INDEX_PRECISION as f32)
+                    as usize
+            })
             .collect();
-        //(phase / MAX_PHASE * data.len() as f32) as usize;
 
-        let amplitude =
-            verify_scale(amplitude_scale) * max_amplitude::<T>() as f32;
+        let idx: Vec<usize> = config
+            .into_iter()
+            .map(|c| (c.phase / MAX_PHASE * data.len() as f32) as usize)
+            .collect();
+
+        let amplitude: Vec<f32> = config
+            .into_iter()
+            .map(|c| {
+                verify_scale(c.amplitude_scale) * max_amplitude::<T>() as f32
+            })
+            .collect();
 
         CachedPeriod {
             data,
@@ -236,11 +323,11 @@ impl Sound for CachedPeriod<'_> {
     fn generate(&mut self, channel: u32) -> f32 {
         let ch = channel as usize;
         let idx = self.idx[ch] / INDEX_PRECISION;
-        self.idx[ch] += self.idx_step;
+        self.idx[ch] += self.idx_step[ch];
         if self.idx[ch] >= self.idx_limit {
             self.idx[ch] -= self.idx_limit;
         }
-        let val = self.data[idx] * self.amplitude;
+        let val = self.data[idx] * self.amplitude[ch];
         self.filters.apply(val, self.ticker.tick_count, channel)
     }
 

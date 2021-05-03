@@ -20,7 +20,8 @@ use zinnia::{
     sound::{
         self,
         filter::{LinearFadeIn, LinearFadeOut},
-        CachedPeriod, Sinusoid, Sound, Ticks, SINE_PERIOD,
+        CachedPeriod, Sinusoid, Sound, SoundConfigCollection, Ticks,
+        SINE_PERIOD,
     },
     Result,
 };
@@ -132,13 +133,15 @@ where
             match Note::parse(note.as_str()) {
                 Ok(note) => {
                     if let Ok(freq) = note.freq() {
-                        let mut sound = Box::new(Sinusoid::new(
-                            freq,
-                            vec![phase, phase],
-                            amplitude_scale,
-                            duration,
-                            &params,
-                        ));
+                        let config = SoundConfigCollection::with_configs(
+                            [
+                                (freq, phase, amplitude_scale),
+                                (freq, phase, amplitude_scale),
+                            ]
+                            .as_ref(),
+                        );
+                        let mut sound =
+                            Box::new(Sinusoid::new(&config, duration, &params));
 
                         sound.add_filter(Box::new(LinearFadeIn::new(
                             fade_ticks,
@@ -154,9 +157,7 @@ where
 
                         let mut sound = Box::new(CachedPeriod::new(
                             &SINE_PERIOD[..],
-                            freq,
-                            vec![phase, phase],
-                            amplitude_scale,
+                            &config,
                             duration,
                             &params,
                         ));
