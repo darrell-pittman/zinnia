@@ -252,12 +252,12 @@ impl Sound for CachedPeriod<'_> {
         if self.idx[ch] > self.idx_limit {
             self.idx[ch] -= self.idx_limit;
         }
-        let idx = self.idx[ch].floor() as usize;
+        let idx_f = self.idx[ch].floor();
+        let idx = idx_f as usize;
         let lower = self.data[idx];
         let upper = self.data[(idx + 1) % self.data.len()];
 
-        let val = (lower
-            + ((upper - lower) * (self.idx[ch] - idx as f32).abs()))
+        let val = (lower + ((upper - lower) * (self.idx[ch] - idx_f).abs()))
             * self.amplitude[ch];
 
         self.filters.apply(val, self.ticker.tick_count, channel)
