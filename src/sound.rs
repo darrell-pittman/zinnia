@@ -13,8 +13,7 @@ pub type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
 const MAX_CONCURRENT: u32 = 4;
-const INDEX_PRECISION: usize = 1000;
-const PERIOD_SAMPLE_SIZE: usize = 8000;
+const PERIOD_SAMPLE_SIZE: usize = 500;
 
 lazy_static! {
     pub static ref SINE_PERIOD: Vec<f32> = sine_period(PERIOD_SAMPLE_SIZE);
@@ -191,9 +190,9 @@ impl Sound for MultiSound {
 pub struct CachedPeriod<'a> {
     data: &'a [f32],
     amplitude: Vec<f32>,
-    idx: Vec<usize>,
-    idx_step: Vec<usize>,
-    idx_limit: usize,
+    idx: Vec<f32>,
+    idx_step: Vec<f32>,
+    idx_limit: f32,
     filters: FilterCollection,
     ticker: Ticker,
 }
@@ -210,19 +209,17 @@ impl<'a> CachedPeriod<'a> {
     {
         let d = duration_to_ticks(duration, params.rate());
 
-        let idx_step: Vec<usize> = config
+        let idx_step: Vec<f32> = config
             .iter()
             .map_freq(|freq| {
                 let ticks_per_cycle = params.rate() as f32 / freq;
-
-                ((data.len() as f32 / ticks_per_cycle) * INDEX_PRECISION as f32)
-                    as usize
+                data.len() as f32 / ticks_per_cycle
             })
             .collect();
 
-        let idx: Vec<usize> = config
+        let idx: Vec<f32> = config
             .iter()
-            .map_phase(|phase| (phase / MAX_PHASE * data.len() as f32) as usize)
+            .map_phase(|phase| phase / MAX_PHASE * data.len() as f32)
             .collect();
 
         let amplitude: Vec<f32> = config
@@ -237,7 +234,7 @@ impl<'a> CachedPeriod<'a> {
             amplitude,
             idx,
             idx_step,
-            idx_limit: data.len() * INDEX_PRECISION,
+            idx_limit: (data.len() as f32) - std::f32::EPSILON,
             filters: FilterCollection::new(),
             ticker: Ticker::new(d),
         }
@@ -251,12 +248,18 @@ impl<'a> CachedPeriod<'a> {
 impl Sound for CachedPeriod<'_> {
     fn generate(&mut self, channel: u32) -> f32 {
         let ch = channel as usize;
-        let idx = self.idx[ch] / INDEX_PRECISION;
         self.idx[ch] += self.idx_step[ch];
-        if self.idx[ch] >= self.idx_limit {
+        if self.idx[ch] > self.idx_limit {
             self.idx[ch] -= self.idx_limit;
         }
-        let val = self.data[idx] * self.amplitude[ch];
+        let idx = self.idx[ch].floor() as usize;
+        let lower = self.data[idx];
+        let upper = self.data[(idx + 1) % self.data.len()];
+
+        let val = (lower
+            + ((upper - lower) * (self.idx[ch] - idx as f32).abs()))
+            * self.amplitude[ch];
+
         self.filters.apply(val, self.ticker.tick_count, channel)
     }
 
