@@ -117,7 +117,7 @@ where
 {
     thread::spawn(move || {
         let duration = Duration::from_millis(1000);
-        let amplitude_scale = 7.0;
+        let amplitude_scale = sound::max_amplitude::<T>() as f32;
         let phase = std::f32::consts::PI / 2.0;
         let duration_ticks = sound::duration_to_ticks(duration, params.rate());
         let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;

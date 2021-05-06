@@ -13,7 +13,7 @@ pub type Ticks = u32;
 
 const MAX_PHASE: f32 = 2.0 * PI;
 const MAX_CONCURRENT: u32 = 4;
-const PERIOD_SAMPLE_SIZE: usize = 500;
+const PERIOD_SAMPLE_SIZE: usize = 1000;
 
 lazy_static! {
     pub static ref SINE_PERIOD: Vec<f32> = sine_period(PERIOD_SAMPLE_SIZE);
@@ -50,7 +50,7 @@ pub fn duration_to_ticks(duration: Duration, rate: Ticks) -> Ticks {
     (duration.as_secs_f32() * rate as f32) as Ticks
 }
 
-fn max_amplitude<T>() -> usize {
+pub fn max_amplitude<T>() -> usize {
     (1 << (mem::size_of::<T>() * 8 - 1)) - 1
 }
 
@@ -102,20 +102,12 @@ impl Sinusoid {
         let d = duration_to_ticks(duration, hwp.rate());
 
         Sinusoid {
-            phase: config
-                .iter()
-                .map_phase(|phase| verify_scale(phase))
-                .collect(),
+            phase: config.iter().map_phase(|phase| phase).collect(),
             step: config
                 .iter()
                 .map_freq(|freq| calc_step(freq, hwp.rate()))
                 .collect(),
-            amplitude: config
-                .iter()
-                .map_amplitude(|amp| {
-                    verify_scale(amp) * max_amplitude::<T>() as f32
-                })
-                .collect(),
+            amplitude: config.iter().map_amplitude(|amp| amp).collect(),
             filters: FilterCollection::new(),
             ticker: Ticker::new(d),
         }
@@ -222,12 +214,8 @@ impl<'a> CachedPeriod<'a> {
             .map_phase(|phase| phase / MAX_PHASE * data.len() as f32)
             .collect();
 
-        let amplitude: Vec<f32> = config
-            .iter()
-            .map_amplitude(|amp| {
-                verify_scale(amp) * max_amplitude::<T>() as f32
-            })
-            .collect();
+        let amplitude: Vec<f32> =
+            config.iter().map_amplitude(|amp| amp).collect();
 
         CachedPeriod {
             data,
