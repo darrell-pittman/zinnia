@@ -17,6 +17,8 @@ const PERIOD_SAMPLE_SIZE: usize = 1000;
 
 lazy_static! {
     pub static ref SINE_PERIOD: Vec<f32> = sine_period(PERIOD_SAMPLE_SIZE);
+    pub static ref SINE_PERIOD_2_CH: Vec<f32> =
+        sine_period_n_channels(PERIOD_SAMPLE_SIZE, 2);
 }
 
 pub fn mix_fixed(sounds: &mut Vec<Box<dyn Sound>>, channel: u32) -> f32 {
@@ -179,8 +181,19 @@ impl Sound for MultiSound {
     }
 }
 
-pub struct CachedPeriod<'a> {
+pub struct PeriodConfig<'a> {
     data: &'a [f32],
+    channels: u32,
+}
+
+impl<'a> PeriodConfig<'a> {
+    pub fn new(data: &'a [f32], channels: u32) -> Self {
+        Self { data, channels }
+    }
+}
+
+pub struct CachedPeriod<'a> {
+    period_config: PeriodConfig<'a>,
     amplitude: Vec<f32>,
     idx: Vec<f32>,
     idx_step: Vec<f32>,
@@ -191,8 +204,8 @@ pub struct CachedPeriod<'a> {
 
 impl<'a> CachedPeriod<'a> {
     pub fn new<T>(
-        data: &'a [f32],
-        config: &SoundConfigCollection,
+        period_config: PeriodConfig<'a>,
+        sound_config: &SoundConfigCollection,
         duration: Duration,
         params: &HardwareParams<T>,
     ) -> Self
@@ -200,29 +213,31 @@ impl<'a> CachedPeriod<'a> {
         T: IoFormat,
     {
         let d = duration_to_ticks(duration, params.rate());
+        let data_size =
+            (period_config.data.len() / period_config.channels as usize) as f32;
 
-        let idx_step: Vec<f32> = config
+        let idx_step: Vec<f32> = sound_config
             .iter()
             .map_freq(|freq| {
                 let ticks_per_cycle = params.rate() as f32 / freq;
-                data.len() as f32 / ticks_per_cycle
+                data_size / ticks_per_cycle
             })
             .collect();
 
-        let idx: Vec<f32> = config
+        let idx: Vec<f32> = sound_config
             .iter()
-            .map_phase(|phase| phase / MAX_PHASE * data.len() as f32)
+            .map_phase(|phase| phase / MAX_PHASE * data_size)
             .collect();
 
         let amplitude: Vec<f32> =
-            config.iter().map_amplitude(|amp| amp).collect();
+            sound_config.iter().map_amplitude(|amp| amp).collect();
 
         CachedPeriod {
-            data,
+            period_config,
             amplitude,
             idx,
             idx_step,
-            idx_limit: (data.len() as f32) - std::f32::EPSILON,
+            idx_limit: data_size - std::f32::EPSILON,
             filters: FilterCollection::new(),
             ticker: Ticker::new(d),
         }
@@ -236,14 +251,22 @@ impl<'a> CachedPeriod<'a> {
 impl Sound for CachedPeriod<'_> {
     fn generate(&mut self, channel: u32) -> f32 {
         let ch = channel as usize;
+        let in_ch = ch % self.period_config.channels as usize;
+        let in_chs = self.period_config.channels as usize;
+
         self.idx[ch] += self.idx_step[ch];
+
         if self.idx[ch] > self.idx_limit {
             self.idx[ch] -= self.idx_limit;
         }
+
         let idx_f = self.idx[ch].floor();
-        let idx = idx_f as usize;
-        let lower = self.data[idx];
-        let upper = self.data[(idx + 1) % self.data.len()];
+        let idx = idx_f as usize * in_chs + in_ch;
+
+        let lower = self.period_config.data[idx];
+
+        let upper = self.period_config.data
+            [(idx + in_chs) % self.period_config.data.len()];
 
         let val = (lower + ((upper - lower) * (self.idx[ch] - idx_f).abs()))
             * self.amplitude[ch];
@@ -266,6 +289,20 @@ fn sine_period(num_samples: usize) -> Vec<f32> {
     let mut data = Vec::with_capacity(num_samples);
     for _ in 0..num_samples {
         data.push(data_phase.sin());
+        data_phase += step;
+    }
+    data
+}
+
+fn sine_period_n_channels(num_samples: usize, channels: usize) -> Vec<f32> {
+    let step = 2.0 * PI / num_samples as f32;
+    let mut data_phase = 0.0f32;
+    let mut data = Vec::with_capacity(num_samples * 2);
+    for _ in 0..num_samples {
+        let val = data_phase.sin();
+        for _ in 0..channels {
+            data.push(val);
+        }
         data_phase += step;
     }
     data
