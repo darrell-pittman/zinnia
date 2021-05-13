@@ -21,7 +21,7 @@ use zinnia::{
         self,
         config::SoundConfigCollection,
         filter::{LinearFadeIn, LinearFadeOut},
-        CachedPeriod, CachedSound, PeriodConfig, Sinusoid, Sound, Ticks,
+        CachedPeriod, CachedSound, InputConfig, Sinusoid, Sound, Ticks,
         C4_PIANO_2_CH_SOUND, SINE_PERIOD_2_CH,
     },
     Result,
@@ -166,7 +166,7 @@ where
                         );
 
                         let mut sound = Box::new(CachedPeriod::new(
-                            PeriodConfig::new(&SINE_PERIOD_2_CH[..], 2),
+                            InputConfig::new(&SINE_PERIOD_2_CH[..], 2),
                             &config,
                             duration,
                             &params,
@@ -185,7 +185,7 @@ where
                         thread::sleep(duration.mul_f32(1.1));
 
                         let sound = Box::new(CachedSound::new(
-                            PeriodConfig::new(&C4_PIANO_2_CH_SOUND[..], 2),
+                            InputConfig::new(&C4_PIANO_2_CH_SOUND[..], 2),
                         ));
 
                         sound_tx.send(sound)?;

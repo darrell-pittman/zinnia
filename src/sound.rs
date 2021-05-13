@@ -190,19 +190,19 @@ impl Sound for MultiSound {
     }
 }
 
-pub struct PeriodConfig<'a> {
+pub struct InputConfig<'a> {
     data: &'a [f32],
     channels: u32,
 }
 
-impl<'a> PeriodConfig<'a> {
+impl<'a> InputConfig<'a> {
     pub fn new(data: &'a [f32], channels: u32) -> Self {
         Self { data, channels }
     }
 }
 
 pub struct CachedPeriod<'a> {
-    period_config: PeriodConfig<'a>,
+    period_config: InputConfig<'a>,
     amplitude: Vec<f32>,
     idx: Vec<f32>,
     idx_step: Vec<f32>,
@@ -213,7 +213,7 @@ pub struct CachedPeriod<'a> {
 
 impl<'a> CachedPeriod<'a> {
     pub fn new<T>(
-        period_config: PeriodConfig<'a>,
+        period_config: InputConfig<'a>,
         sound_config: &SoundConfigCollection,
         duration: Duration,
         params: &HardwareParams<T>,
@@ -293,12 +293,12 @@ impl Sound for CachedPeriod<'_> {
 }
 
 pub struct CachedSound<'a> {
-    period_config: PeriodConfig<'a>,
+    period_config: InputConfig<'a>,
     idx: usize,
 }
 
 impl<'a> CachedSound<'a> {
-    pub fn new(period_config: PeriodConfig<'a>) -> Self {
+    pub fn new(period_config: InputConfig<'a>) -> Self {
         Self {
             period_config,
             idx: 0,
