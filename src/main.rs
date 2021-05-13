@@ -21,7 +21,8 @@ use zinnia::{
         self,
         config::SoundConfigCollection,
         filter::{LinearFadeIn, LinearFadeOut},
-        CachedPeriod, PeriodConfig, Sinusoid, Sound, Ticks, SINE_PERIOD_2_CH,
+        CachedPeriod, CachedSound, PeriodConfig, Sinusoid, Sound, Ticks,
+        C4_PIANO_2_CH_SOUND, SINE_PERIOD_2_CH,
     },
     Result,
 };
@@ -118,7 +119,8 @@ where
     thread::spawn(move || {
         let duration = Duration::from_millis(1000);
         let amplitude_scale = sound::max_amplitude::<T>() as f32;
-        let phase = std::f32::consts::PI / 2.0;
+        //let phase = std::f32::consts::PI / 2.0;
+        let phase = 0.0;
         let duration_ticks = sound::duration_to_ticks(duration, params.rate());
         let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;
         while running.load(Ordering::Relaxed) {
@@ -155,6 +157,14 @@ where
                         sound_tx.send(sound)?;
                         thread::sleep(duration.mul_f32(1.1));
 
+                        let config = SoundConfigCollection::with_configs(
+                            [
+                                (freq, phase, amplitude_scale),
+                                (freq, phase, amplitude_scale),
+                            ]
+                            .as_ref(),
+                        );
+
                         let mut sound = Box::new(CachedPeriod::new(
                             PeriodConfig::new(&SINE_PERIOD_2_CH[..], 2),
                             &config,
@@ -173,6 +183,13 @@ where
 
                         sound_tx.send(sound)?;
                         thread::sleep(duration.mul_f32(1.1));
+
+                        let sound = Box::new(CachedSound::new(
+                            PeriodConfig::new(&C4_PIANO_2_CH_SOUND[..], 2),
+                        ));
+
+                        sound_tx.send(sound)?;
+                        thread::sleep(Duration::from_secs(5));
                     } else {
                         println!("Invalid Note!");
                     }
@@ -240,7 +257,7 @@ where
 
 fn main() {
     let device = "pulse";
-    let params = HwpBuilder::<i16>::new(25000, 5000, 2).rate(44100).build();
+    let params = HwpBuilder::<i16>::new(25000, 5000, 2).rate(8000).build();
 
     match run(device, params) {
         Ok(_) => (),

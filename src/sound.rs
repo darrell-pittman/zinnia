@@ -7,7 +7,9 @@ use config::SoundConfigCollection;
 use core::f32;
 use filter::{Filter, FilterCollection};
 use lazy_static::lazy_static;
-use std::{f32::consts::PI, mem, time::Duration, usize};
+use std::{
+    f32::consts::PI, fs::File, io::Read, mem, path::Path, time::Duration, usize,
+};
 
 pub type Ticks = u32;
 
@@ -16,9 +18,16 @@ const MAX_CONCURRENT: u32 = 4;
 const PERIOD_SAMPLE_SIZE: usize = 1000;
 
 lazy_static! {
-    pub static ref SINE_PERIOD: Vec<f32> = sine_period(PERIOD_SAMPLE_SIZE);
+    pub static ref SINE_PERIOD: Vec<f32> =
+        sine_period_n_channels(PERIOD_SAMPLE_SIZE, 1);
     pub static ref SINE_PERIOD_2_CH: Vec<f32> =
         sine_period_n_channels(PERIOD_SAMPLE_SIZE, 2);
+    pub static ref C4_PIANO_2_CH_PERIOD: Vec<f32> = c4_2_channel_sound()
+        .into_iter()
+        .skip(10000)
+        .take(64)
+        .collect();
+    pub static ref C4_PIANO_2_CH_SOUND: Vec<f32> = c4_2_channel_sound();
 }
 
 pub fn mix_fixed(sounds: &mut Vec<Box<dyn Sound>>, channel: u32) -> f32 {
@@ -254,12 +263,6 @@ impl Sound for CachedPeriod<'_> {
         let in_ch = ch % self.period_config.channels as usize;
         let in_chs = self.period_config.channels as usize;
 
-        self.idx[ch] += self.idx_step[ch];
-
-        if self.idx[ch] > self.idx_limit {
-            self.idx[ch] -= self.idx_limit;
-        }
-
         let idx_f = self.idx[ch].floor();
         let idx = idx_f as usize * in_chs + in_ch;
 
@@ -270,6 +273,12 @@ impl Sound for CachedPeriod<'_> {
 
         let val = (lower + ((upper - lower) * (self.idx[ch] - idx_f).abs()))
             * self.amplitude[ch];
+
+        self.idx[ch] += self.idx_step[ch];
+
+        if self.idx[ch] > self.idx_limit {
+            self.idx[ch] -= self.idx_limit;
+        }
 
         self.filters.apply(val, self.ticker.tick_count, channel)
     }
@@ -283,15 +292,39 @@ impl Sound for CachedPeriod<'_> {
     }
 }
 
-fn sine_period(num_samples: usize) -> Vec<f32> {
-    let step = 2.0 * PI / num_samples as f32;
-    let mut data_phase = 0.0f32;
-    let mut data = Vec::with_capacity(num_samples);
-    for _ in 0..num_samples {
-        data.push(data_phase.sin());
-        data_phase += step;
+pub struct CachedSound<'a> {
+    period_config: PeriodConfig<'a>,
+    idx: usize,
+}
+
+impl<'a> CachedSound<'a> {
+    pub fn new(period_config: PeriodConfig<'a>) -> Self {
+        Self {
+            period_config,
+            idx: 0,
+        }
     }
-    data
+}
+
+impl Sound for CachedSound<'_> {
+    fn generate(&mut self, channel: u32) -> f32 {
+        let in_channel = (channel % self.period_config.channels) as usize;
+        if self.is_complete() {
+            0.0
+        } else {
+            self.period_config.data
+                [self.idx * self.period_config.channels as usize + in_channel]
+        }
+    }
+
+    fn tick(&mut self) {
+        self.idx += 1;
+    }
+
+    fn is_complete(&self) -> bool {
+        self.idx * self.period_config.channels as usize
+            >= self.period_config.data.len()
+    }
 }
 
 fn sine_period_n_channels(num_samples: usize, channels: usize) -> Vec<f32> {
@@ -306,4 +339,19 @@ fn sine_period_n_channels(num_samples: usize, channels: usize) -> Vec<f32> {
         data_phase += step;
     }
     data
+}
+
+fn c4_2_channel_sound() -> Vec<f32> {
+    let filename = Path::new("data/C4.raw");
+
+    let mut input = File::open(&filename).unwrap();
+
+    let mut buf = Vec::new();
+    let bytes_read = input.read_to_end(&mut buf).unwrap();
+    let mut result = Vec::new();
+    for i in { 0..bytes_read }.step_by(2) {
+        let val = ((buf[i] as i16) << 8) + (buf[i + 1] as i16);
+        result.push(val as f32);
+    }
+    result
 }
