@@ -202,7 +202,7 @@ impl<'a> InputConfig<'a> {
 }
 
 pub struct CachedPeriod<'a> {
-    period_config: InputConfig<'a>,
+    input_config: InputConfig<'a>,
     amplitude: Vec<f32>,
     idx: Vec<f32>,
     idx_step: Vec<f32>,
@@ -213,7 +213,7 @@ pub struct CachedPeriod<'a> {
 
 impl<'a> CachedPeriod<'a> {
     pub fn new<T>(
-        period_config: InputConfig<'a>,
+        input_config: InputConfig<'a>,
         sound_config: &SoundConfigCollection,
         duration: Duration,
         params: &HardwareParams<T>,
@@ -223,7 +223,7 @@ impl<'a> CachedPeriod<'a> {
     {
         let d = duration_to_ticks(duration, params.rate());
         let data_size =
-            (period_config.data.len() / period_config.channels as usize) as f32;
+            (input_config.data.len() / input_config.channels as usize) as f32;
 
         let idx_step: Vec<f32> = sound_config
             .iter()
@@ -242,7 +242,7 @@ impl<'a> CachedPeriod<'a> {
             sound_config.iter().map_amplitude(|amp| amp).collect();
 
         CachedPeriod {
-            period_config,
+            input_config,
             amplitude,
             idx,
             idx_step,
@@ -260,16 +260,16 @@ impl<'a> CachedPeriod<'a> {
 impl Sound for CachedPeriod<'_> {
     fn generate(&mut self, channel: u32) -> f32 {
         let ch = channel as usize;
-        let in_ch = ch % self.period_config.channels as usize;
-        let in_chs = self.period_config.channels as usize;
+        let in_ch = ch % self.input_config.channels as usize;
+        let in_chs = self.input_config.channels as usize;
 
         let idx_f = self.idx[ch].floor();
         let idx = idx_f as usize * in_chs + in_ch;
 
-        let lower = self.period_config.data[idx];
+        let lower = self.input_config.data[idx];
 
-        let upper = self.period_config.data
-            [(idx + in_chs) % self.period_config.data.len()];
+        let upper = self.input_config.data
+            [(idx + in_chs) % self.input_config.data.len()];
 
         let val = (lower + ((upper - lower) * (self.idx[ch] - idx_f).abs()))
             * self.amplitude[ch];
