@@ -119,10 +119,10 @@ where
     thread::spawn(move || {
         let duration = Duration::from_millis(1000);
         let amplitude_scale = sound::max_amplitude::<T>() as f32;
-        //let phase = std::f32::consts::PI / 2.0;
         let phase = 0.0;
         let duration_ticks = sound::duration_to_ticks(duration, params.rate());
-        let fade_ticks = (duration_ticks as f32 * 0.3) as Ticks;
+        let fade_in_ticks = (duration_ticks as f32 * 0.2) as Ticks;
+        let fade_out_ticks = (duration_ticks as f32 * 0.5) as Ticks;
         while running.load(Ordering::Relaxed) {
             let mut note = String::new();
             io::stdin().read_line(&mut note)?;
@@ -146,11 +146,11 @@ where
                             Box::new(Sinusoid::new(&config, duration, &params));
 
                         sound.add_filter(Box::new(LinearFadeIn::new(
-                            fade_ticks,
+                            fade_in_ticks,
                         )));
 
                         sound.add_filter(Box::new(LinearFadeOut::new(
-                            fade_ticks,
+                            fade_out_ticks,
                             duration_ticks,
                         )));
 
@@ -166,18 +166,18 @@ where
                         );
 
                         let mut sound = Box::new(CachedPeriod::new(
-                            InputConfig::new(&SINE_PERIOD_2_CH[..], 2),
+                            InputConfig::new(&SINE_PERIOD_2_CH[..], 2, 2),
                             &config,
                             duration,
                             &params,
                         ));
 
                         sound.add_filter(Box::new(LinearFadeIn::new(
-                            fade_ticks,
+                            fade_in_ticks,
                         )));
 
                         sound.add_filter(Box::new(LinearFadeOut::new(
-                            fade_ticks,
+                            fade_out_ticks,
                             duration_ticks,
                         )));
 
@@ -185,7 +185,7 @@ where
                         thread::sleep(duration.mul_f32(1.1));
 
                         let sound = Box::new(CachedSound::new(
-                            InputConfig::new(&C4_PIANO_2_CH_SOUND[..], 2),
+                            InputConfig::new(&C4_PIANO_2_CH_SOUND[..], 2, 1),
                         ));
 
                         sound_tx.send(sound)?;

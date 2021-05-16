@@ -19,13 +19,13 @@ const PERIOD_SAMPLE_SIZE: usize = 1000;
 
 lazy_static! {
     pub static ref SINE_PERIOD: Vec<f32> =
-        sine_period_n_channels(PERIOD_SAMPLE_SIZE, 1);
+        sine_period_n_channels(PERIOD_SAMPLE_SIZE, 1, 2);
     pub static ref SINE_PERIOD_2_CH: Vec<f32> =
-        sine_period_n_channels(PERIOD_SAMPLE_SIZE, 2);
+        sine_period_n_channels(PERIOD_SAMPLE_SIZE, 2, 2);
     pub static ref C4_PIANO_2_CH_PERIOD: Vec<f32> = c4_2_channel_sound()
         .into_iter()
-        .skip(10000)
-        .take(64)
+        .skip(30000)
+        .take(64 * 500)
         .collect();
     pub static ref C4_PIANO_2_CH_SOUND: Vec<f32> = c4_2_channel_sound();
 }
@@ -193,11 +193,16 @@ impl Sound for MultiSound {
 pub struct InputConfig<'a> {
     data: &'a [f32],
     channels: u32,
+    cycles: u32,
 }
 
 impl<'a> InputConfig<'a> {
-    pub fn new(data: &'a [f32], channels: u32) -> Self {
-        Self { data, channels }
+    pub fn new(data: &'a [f32], channels: u32, cycles: u32) -> Self {
+        Self {
+            data,
+            channels,
+            cycles,
+        }
     }
 }
 
@@ -228,7 +233,8 @@ impl<'a> CachedPeriod<'a> {
         let idx_step: Vec<f32> = sound_config
             .iter()
             .map_freq(|freq| {
-                let ticks_per_cycle = params.rate() as f32 / freq;
+                let ticks_per_cycle =
+                    params.rate() as f32 / freq * input_config.cycles as f32;
                 data_size / ticks_per_cycle
             })
             .collect();
@@ -327,8 +333,12 @@ impl Sound for CachedSound<'_> {
     }
 }
 
-fn sine_period_n_channels(num_samples: usize, channels: usize) -> Vec<f32> {
-    let step = 2.0 * PI / num_samples as f32;
+fn sine_period_n_channels(
+    num_samples: usize,
+    channels: usize,
+    num_periods: u32,
+) -> Vec<f32> {
+    let step = 2.0 * PI * num_periods as f32 / num_samples as f32;
     let mut data_phase = 0.0f32;
     let mut data = Vec::with_capacity(num_samples * 2);
     for _ in 0..num_samples {
