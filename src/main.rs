@@ -21,8 +21,8 @@ use zinnia::{
         self,
         config::SoundConfigCollection,
         filter::{LinearFadeIn, LinearFadeOut},
-        CachedPeriod, CachedSound, InputConfig, Sinusoid, Sound, Ticks,
-        C4_PIANO_2_CH_SOUND, SINE_PERIOD_2_CH,
+        CachedPeriod, CachedSound, InputConfig, Sinusoid, Sound, Ticks, C4_PIANO_2_CH_SOUND,
+        SINE_PERIOD_2_CH,
     },
     Result,
 };
@@ -142,12 +142,9 @@ where
                             ]
                             .as_ref(),
                         );
-                        let mut sound =
-                            Box::new(Sinusoid::new(&config, duration, &params));
+                        let mut sound = Box::new(Sinusoid::new(&config, duration, &params));
 
-                        sound.add_filter(Box::new(LinearFadeIn::new(
-                            fade_in_ticks,
-                        )));
+                        sound.add_filter(Box::new(LinearFadeIn::new(fade_in_ticks)));
 
                         sound.add_filter(Box::new(LinearFadeOut::new(
                             fade_out_ticks,
@@ -172,9 +169,7 @@ where
                             &params,
                         ));
 
-                        sound.add_filter(Box::new(LinearFadeIn::new(
-                            fade_in_ticks,
-                        )));
+                        sound.add_filter(Box::new(LinearFadeIn::new(fade_in_ticks)));
 
                         sound.add_filter(Box::new(LinearFadeOut::new(
                             fade_out_ticks,
@@ -184,9 +179,11 @@ where
                         sound_tx.send(sound)?;
                         thread::sleep(duration.mul_f32(1.1));
 
-                        let sound = Box::new(CachedSound::new(
-                            InputConfig::new(&C4_PIANO_2_CH_SOUND[..], 2, 1),
-                        ));
+                        let sound = Box::new(CachedSound::new(InputConfig::new(
+                            &C4_PIANO_2_CH_SOUND[..],
+                            2,
+                            1,
+                        )));
 
                         sound_tx.send(sound)?;
                         thread::sleep(Duration::from_secs(5));
@@ -210,18 +207,12 @@ where
     let init = Arc::new(Barrier::new(2));
     let running = Arc::new(AtomicBool::new(true));
 
-    let (sound_tx, sound_rx): (
-        Sender<Box<dyn Sound>>,
-        Receiver<Box<dyn Sound>>,
-    ) = mpsc::channel();
+    let (sound_tx, sound_rx): (Sender<Box<dyn Sound>>, Receiver<Box<dyn Sound>>) = mpsc::channel();
 
-    let (param_tx, param_rx): (
-        Sender<HardwareParams<T>>,
-        Receiver<HardwareParams<T>>,
-    ) = mpsc::channel();
+    let (param_tx, param_rx): (Sender<HardwareParams<T>>, Receiver<HardwareParams<T>>) =
+        mpsc::channel();
 
-    let (period_tx, period_rx): (SyncSender<Vec<T>>, Receiver<Vec<T>>) =
-        mpsc::sync_channel(1);
+    let (period_tx, period_rx): (SyncSender<Vec<T>>, Receiver<Vec<T>>) = mpsc::sync_channel(1);
 
     let mut handles = Vec::new();
 
