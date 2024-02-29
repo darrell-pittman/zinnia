@@ -247,7 +247,7 @@ where
 }
 
 fn main() {
-    let device = "pulse";
+    let device = "default";
     let params = HwpBuilder::<i16>::new(25000, 5000, 2).rate(8000).build();
 
     match run(device, params) {
