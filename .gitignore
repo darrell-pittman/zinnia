@@ -1,3 +1,4 @@
 /target
 Cargo.lock
 /data/tmp
+.wgc_run
